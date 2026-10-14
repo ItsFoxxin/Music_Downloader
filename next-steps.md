@@ -8,7 +8,7 @@
 - Import a small known-good completed torrent through validation, review, copy,
   and checksum audit; confirm the original still seeds.
 - Confirm movie/TV folder conventions against the actual media server libraries.
-- Inspect the live torrent/VPN settings before any optional stack consolidation.
+- Inspect the live torrent/VPN settings before migrating to the bundled stack.
 - Verify rollback backups. Decide the stable branch name (`main` is the repository
   default; the requested eventual merge target was `master`).
 

@@ -3,35 +3,111 @@ on:
   push:
     branches: [dev, main, master]
   pull_request:
+    branches: [dev, main, master]
+  workflow_dispatch:
+    inputs:
+      strict:
+        description: Run stable-level tests on this branch
+        type: boolean
+        default: false
 permissions:
   contents: read
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 jobs:
-  verify:
+  metadata:
+    name: Version and Compose
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - run: sudo apt-get update && sudo apt-get install -y ffmpeg
-      - run: python -m pip install -r requirements-dev.txt -r music/backend/requirements-dev.txt
-      - name: Movie and TV workflow tests
-        run: python -m pytest tests -q
-      - name: Music regression tests
+      - run: python scripts/check_release.py
+      - name: Require version increase for stable promotion
+        if: github.base_ref == 'master' || github.base_ref == 'main' || github.ref == 'refs/heads/master' || github.ref == 'refs/heads/main'
         env:
-          PYTHONPATH: music/backend/src
-        run: python -m pytest -c music/backend/pyproject.toml music/backend/tests -q
-      - name: JavaScript syntax
-        run: node --check app/static/app.js
-      - name: Compose validation
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: |
+          if [ -n "$BASE_SHA" ]; then python scripts/check_release.py --base "$BASE_SHA"; fi
+      - name: Compose topology
         env:
           APP_TOKEN: ci-only-token-at-least-24-characters
           WIREGUARD_PUBLIC_KEY: example-only
           WIREGUARD_ENDPOINT_IP: 192.0.2.10
         run: |
-          docker compose -f compose.yaml config --quiet
-          docker compose -f compose.yaml -f compose.vpn.yaml config --quiet
-      - name: Build application images
+          docker compose -f compose.yaml config --format json > /tmp/base.json
+          python scripts/check_compose.py < /tmp/base.json
+          QBIT_WEB_PORT=8181 docker compose -f compose.yaml config --format json | python scripts/check_compose.py
+          docker compose -f compose.yaml -f compose.vpn.yaml config --format json > /tmp/compat.json
+          diff /tmp/base.json /tmp/compat.json
+      - name: JavaScript syntax
+        run: node --check app/static/app.js
+  tests:
+    name: Tests (Python ${{ matrix.python }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ${{ fromJSON((github.base_ref == 'master' || github.base_ref == 'main' || github.ref == 'refs/heads/master' || github.ref == 'refs/heads/main' || inputs.strict == true) && '["3.12", "3.13"]' || '["3.12"]') }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+          cache: pip
+          cache-dependency-path: '**/requirements*.txt'
+      - run: sudo apt-get update && sudo apt-get install -y ffmpeg
+      - run: python -m pip install -r requirements-dev.txt -r music/backend/requirements-dev.txt
+      - run: python -m pip check
+      - name: Movie and TV workflow tests
+        run: python -m pytest tests -q --junitxml=reports/media.xml
+      - name: Music regression tests
         env:
-          APP_TOKEN: ci-only-token-at-least-24-characters
-        run: docker compose -f compose.yaml build media web
+          PYTHONPATH: music/backend/src
+        run: python -m pytest -c music/backend/pyproject.toml music/backend/tests -q --junitxml=reports/music.xml
+      - name: Stable tests cannot skip cases
+        if: github.base_ref == 'master' || github.base_ref == 'main' || github.ref == 'refs/heads/master' || github.ref == 'refs/heads/main' || inputs.strict == true
+        run: python scripts/check_release.py --reports reports/media.xml reports/music.xml
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: test-results-${{ matrix.python }}
+          path: reports/
+          if-no-files-found: warn
+  containers:
+    name: Container integration
+    needs: [metadata, tests]
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Build and exercise deployed application containers
+        env:
+          STRICT: ${{ github.base_ref == 'master' || github.base_ref == 'main' || github.ref == 'refs/heads/master' || github.ref == 'refs/heads/main' || inputs.strict == true }}
+        run: |
+          if [ "$STRICT" = true ]; then
+            python scripts/smoke_containers.py --strict
+          else
+            python scripts/smoke_containers.py
+          fi
+  gate:
+    name: CI gate
+    if: always()
+    needs: [metadata, tests, containers]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Require every layer to pass
+        env:
+          RESULTS: ${{ toJSON(needs) }}
+        run: |
+          python -c 'import json, os; results=json.loads(os.environ["RESULTS"]); assert all(j["result"] == "success" for j in results.values()), "A required CI layer failed or was skipped"'

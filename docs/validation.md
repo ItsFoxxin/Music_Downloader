@@ -1,5 +1,30 @@
 # Validation evidence
 
+## Bundled VPN update - 2026-10-14
+
+- Release 0.2.0 metadata, Python/JavaScript syntax, and workflow YAML checks passed.
+- Local media tests: 30 passed, one Windows symlink case skipped, and three HTTP
+  cases deselected after the Windows TestClient run stalled. The full HTTP suite
+  must pass in Linux CI; the local partial run is not a full regression pass.
+- New container smoke checks require Docker and were not executed locally.
+
+- Main Compose configuration expands to all seven services without profiles.
+- Automated topology checks passed for default port 8080 and custom port 8181:
+  VPN namespace, healthy-start dependency, consistent Web UI/firewall/hook ports,
+  key mount, restricted capabilities, shared downloads, and read-only app staging.
+- The legacy two-file launch produces an identical expanded configuration.
+- Four intentionally unsafe variants were rejected: host networking, writable
+  app staging, optional qBittorrent profile, and mismatched download sources.
+- The prior development commit's GitHub Actions run `37380626394` was checked
+  and completed successfully. This does not validate the new commit's CI result.
+
+These are configuration checks, not running-container tests. A local Docker daemon
+was unavailable. Live NAS/VPN credentials, egress, kill-switch behavior, and actual
+qBittorrent authentication remain deployment checks. CI now repeats the topology
+checks as well as application tests and image builds.
+
+## Original application verification
+
 Local verification on 2026-10-05, Windows, Python 3.12:
 
 | Check | Result |

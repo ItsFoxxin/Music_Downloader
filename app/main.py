@@ -17,6 +17,7 @@ from .db import Store
 from .files import contained, linked, target
 from .qbit import Qbit
 from .worker import Worker
+from .version import __version__
 
 
 class ValidationRequest(BaseModel):
@@ -54,7 +55,7 @@ def create_app(settings=None, *, start_worker=True, qbit=None):
         yield
         worker.close()
 
-    app = FastAPI(title="Fox Den Media", lifespan=lifespan, docs_url=None, redoc_url=None, openapi_url=None)
+    app = FastAPI(title="Fox Den Media", version=__version__, lifespan=lifespan, docs_url=None, redoc_url=None, openapi_url=None)
     app.state.worker, app.state.store = worker, store
     assets = Path(__file__).parent / "static"
 
@@ -122,7 +123,7 @@ def create_app(settings=None, *, start_worker=True, qbit=None):
     @app.get("/api/status", dependencies=[Depends(auth)])
     def status():
         usage = shutil.disk_usage(s.media)
-        return {"name": "Fox Den Media", "version": "0.1.0", "demo": s.demo,
+        return {"name": "Fox Den Media", "version": __version__, "demo": s.demo,
                 "qbit_configured": bool(s.qbit_url), "qbit_public_url": "" if s.demo else (s.qbit_public_url or s.qbit_url),
                 "staging": str(s.staging), "media": str(s.media), "qbit_download_root": s.qbit_download_root,
                 "free_bytes": usage.free, "total_bytes": usage.total, "full_decode": s.full_decode,

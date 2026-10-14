@@ -215,7 +215,10 @@ def test_shared_session_logout_and_csrf(settings):
         assert response.status_code==200
         assert 'HttpOnly' in response.headers['set-cookie']
         assert client.get('/api/session').status_code==200
-        assert client.get('/api/status').status_code==200
+        response = client.get('/api/status')
+        assert response.status_code == 200
+        from app.version import __version__
+        assert response.json()['version'] == __version__
         assert client.post('/api/logout').status_code==403
         assert client.post('/api/logout',headers={'X-Foxden-Request':'1'}).status_code==200
         assert client.get('/api/session').status_code==401

@@ -77,6 +77,7 @@ function settingsPanel(){
 }
 function render(){
   if(!state.status)return;
+  $("app-version").textContent=`Fox Den Media · v${state.status.version}`;
   const names={overview:["Overview","From download <br>to movie night<span>.</span>","On the way in"],downloads:["Downloads","A little closer to play<span>.</span>","Download queue"],staging:["Staging & review","Almost home<span>.</span>","Your staging folder"],library:["Movie & TV library","A collection worth keeping<span>.</span>","Imported movies & TV"],history:["Activity","Every step, accounted for<span>.</span>","Workspace activity"],settings:["Connections","Everything, connected<span>.</span>","Your workspace settings"]};
   $("breadcrumb").textContent=names[tab][0];$("page-title").innerHTML=names[tab][1];$("panel-title").textContent=names[tab][2];
   $("panel-eyebrow").textContent=tab==="settings"?"CONFIGURED ON YOUR SERVER":tab==="history"?"DURABLE JOB HISTORY":tab==="staging"?"WAITING OUTSIDE THE LIBRARY":tab==="library"?"A VERIFIED PLACE TO LAND":"LIVE FROM YOUR DOWNLOADER";

@@ -1,5 +1,7 @@
 # Fox Den Media
 
+Current development release: **0.2.0**. See [CHANGELOG.md](CHANGELOG.md).
+
 One self-hosted Docker project for **music, movies, and TV**. The existing Fox Den
 Music downloader lives alongside a new qBittorrent dashboard and a reviewed,
 verified staging-to-library workflow. One gateway and one login connect both.
@@ -18,7 +20,7 @@ verified staging-to-library workflow. One gateway and one login connect both.
   The original download remains available to qBittorrent for seeding.
 - Import receipts, history, crash-recovery reconciliation, and library checksum
   audits to detect missing or changed imported files.
-- An optional Compose extension bundles Gluetun/qBittorrent without giving
+- The default Compose stack includes Gluetun/qBittorrent without giving
   qBittorrent an independent network or mounting the media library into it.
 
 The qBittorrent Web UI remains a separate service. Its login is separate from
@@ -33,7 +35,7 @@ Fox Den's login. Opening the link is intentional; embedding is not required.
 3. Configure your existing music paths and these movie/TV values:
 
    ```dotenv
-   QBIT_URL=http://your-nas-address:8080
+   QBIT_URL=http://gluetun:8080
    QBIT_PUBLIC_URL=http://your-nas-address:8080
    QBIT_USERNAME=admin
    QBIT_PASSWORD=your-private-web-ui-password
@@ -43,25 +45,42 @@ Fox Den's login. Opening the link is intentional; embedding is not required.
    MEDIA_CONFIG_PATH=/absolute/host/path/to/foxden-media-config
    ```
 
-4. Pre-create every bind-mounted directory listed in `.env`. Give the service
+4. Configure `WIREGUARD_PUBLIC_KEY`, `WIREGUARD_ENDPOINT_IP`, and
+   `WIREGUARD_ADDRESSES` from your Proton WireGuard profile. Put its private key
+   in the file selected by `WIREGUARD_PRIVATE_KEY_FILE`; never commit it.
+   See [VPN setup](docs/torrent-vpn.md) for all settings and migration steps.
+   Pre-create every bind-mounted directory listed in `.env`. Give the service
    UID/group read access to torrent staging and write access to its own config,
    music staging/inbox, browser config, and media destinations. Keep both SQLite
    config directories on a local filesystem. **Do not recursively change existing
    library ownership.** Check its existing group/ACL model first.
 5. Keep `WEB_BIND_IP=127.0.0.1` behind your existing HTTPS reverse proxy, or set a
    specific LAN IP for LAN access. Set `COOKIE_SECURE=true` when using HTTPS.
-   Start the app:
+   Set `QBIT_BIND_IP` to a specific server LAN IP for direct qBittorrent access,
+   and set `QBIT_PUBLIC_URL` to the matching browser address. Start the app:
 
    ```sh
    docker compose -f compose.yaml config --quiet
    docker compose -f compose.yaml up -d --build
    docker compose -f compose.yaml ps
-   docker compose -f compose.yaml logs --tail=100 media web worker gateway
+   docker compose -f compose.yaml logs --tail=100 gluetun qbittorrent media
    ```
 
-6. Open `http://your-server:8000/transfers/` and enter `APP_TOKEN`. Sessions last
+6. On a fresh qBittorrent install, read its temporary admin password in the
+   `qbittorrent` logs, sign into its Web UI, and set a permanent password. Put
+   that same password in `.env` as `QBIT_PASSWORD`, then run
+   `docker compose -f compose.yaml up -d --force-recreate media`.
+   This environment variable lets Fox Den log in; it does not set qBittorrent's password.
+7. Open `http://your-server:8000/transfers/` and enter `APP_TOKEN`. Sessions last
    eight hours. Music is at `/`; movies and TV are at `/transfers/`. The gateway
    requires the same session for music and the music downloader browser.
+
+All seven services start from `compose.yaml`; qBittorrent waits for Gluetun's
+health check. The dashboard can remain available while the VPN is unavailable.
+The old `compose.vpn.yaml` is retained as an empty compatibility file.
+
+Before reusing an existing torrent deployment, stop and back it up. Never run
+both stacks against the same qBittorrent appdata or listening port.
 
 For an existing music deployment, stop it and back up its complete config
 directory before reusing its paths. Preserve the original `.env`; merge settings
@@ -115,6 +134,19 @@ See [architecture](docs/architecture.md), [VPN integration](docs/torrent-vpn.md)
 [recovery](docs/recovery.md), and [validation evidence](docs/validation.md).
 
 ## Development
+
+The root `VERSION` file is the source for the API and dashboard version and is
+copied into the media image. Releases use `MAJOR.MINOR.PATCH`: increment the patch
+for fixes, minor for features, and major for incompatible stable changes. While
+the major version is zero, minor releases may require configuration changes.
+For each release, update `VERSION`, the media image tag in `compose.yaml`, this
+README, and `CHANGELOG.md` together; CI rejects mismatches.
+Publish to `dev` first; stable promotion remains a separate step. Bundled Fox Den
+Music retains its own component version (2.3.4).
+
+[CI layers](docs/ci.md) run tests and container smoke checks on `dev`. Stable PRs
+to `master` or `main` additionally require a version increase, a second Python
+version, no skipped tests, and the full import/audit/restart container workflow.
 
 Python 3.12+, FFmpeg, and FFprobe are required. Commands from the repository root:
 

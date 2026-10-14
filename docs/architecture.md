@@ -5,7 +5,8 @@ Browser -> gateway :8000 -> media :8010       /transfers/
                        -> music web :8000   /
                        -> download-browser  /server-browser/
 
-media -> qBittorrent Web API (server-side credentials)
+media -> gluetun:8080 -> qBittorrent Web API (server-side credentials)
+qBittorrent -> Gluetun network namespace -> WireGuard VPN
 media -> read-only torrent staging -> isolated copy -> media/Movies or media/TV
 music web -> music SQLite/staging -> music worker -> music library
 ```
@@ -15,6 +16,12 @@ login/static page is public; its API requires the same cookie or a bearer token.
 Movie/TV jobs use a dedicated SQLite database in `MEDIA_CONFIG_PATH`, never the
 music database. One durable queue is consumed by one background thread in one
 media Uvicorn process. qBittorrent HTTP calls are serialized with a session lock.
+
+The main Compose file starts all seven services, including Gluetun and qBittorrent.
+qBittorrent waits for Gluetun's health check and shares its network namespace;
+only Gluetun publishes the Web UI port. qBittorrent mounts config and downloads,
+while Fox Den sees those downloads read-only and alone mounts the movie/TV library.
+`compose.vpn.yaml` is an empty compatibility shim for older launch commands.
 
 ## State and import protocol
 

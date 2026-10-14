@@ -45,6 +45,7 @@ dist/
 .coverage
 coverage.xml
 htmlcov/
+reports/
 *.log
 
 # Editors and operating systems

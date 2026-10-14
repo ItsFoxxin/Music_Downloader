@@ -1,6 +1,6 @@
 # Fox Den Media
 
-Current development release: **0.2.0**. See [CHANGELOG.md](CHANGELOG.md).
+Current development release: **0.2.1**. See [CHANGELOG.md](CHANGELOG.md).
 
 One self-hosted Docker project for **music, movies, and TV**. The existing Fox Den
 Music downloader lives alongside a new qBittorrent dashboard and a reviewed,
@@ -146,7 +146,7 @@ Music retains its own component version (2.3.4).
 
 [CI layers](docs/ci.md) run tests and container smoke checks on `dev`. Stable PRs
 to `master` or `main` additionally require a version increase, a second Python
-version, no skipped tests, and the full import/audit/restart container workflow.
+version, no unexpected skipped tests, and the full import/audit/restart container workflow.
 
 Python 3.12+, FFmpeg, and FFprobe are required. Commands from the repository root:
 

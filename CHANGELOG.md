@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.2.1 - 2026-10-14
+
+### Fixed
+
+- Pass the existing CSRF and optional Jellyfin secrets directly from `.env` to
+  Music containers. Environment-backed Compose secrets cannot be mounted into
+  read-only services; the first container CI run caught this startup failure.
+- Keep the WireGuard private key as a file-backed secret scoped to Gluetun.
+- Stable CI permits only the two explicitly identified Windows-only test skips
+  on Linux; all unexpected skips still fail the release gate.
+
 ## 0.2.0 - 2026-10-14
 
 ### Added

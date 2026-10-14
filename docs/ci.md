@@ -11,7 +11,7 @@ retains its separate version.
 | Default/custom-port Compose topology and legacy compatibility | Required | Required |
 | Media and Music tests with real FFmpeg fixtures | Python 3.12 | Python 3.12 and 3.13 |
 | Dependency consistency (`pip check`) | Required | Required |
-| JUnit test reports | Uploaded | Uploaded; no skipped cases allowed |
+| JUnit test reports | Uploaded | Uploaded; no unexpected skipped cases allowed |
 | Build media and Music images | Required | Required |
 | Real container gateway, shared login/logout, API version, non-root users, read-only staging | Required | Required |
 | Container full decode, reviewed import, checksum audit, overwrite refusal, source retention, restart persistence | - | Required |
@@ -23,6 +23,9 @@ and again on pushes. Both stable names are covered because this repository curre
 uses `main` while the planned stable branch was called `master`. No stable branch
 is created or merged by CI. Use Actions -> Validate Fox Den Media -> Run workflow
 with `strict` enabled to exercise stable-level tests on `dev` ahead of promotion.
+
+Two Windows-only import-lock tests are explicitly allowed to skip on Linux;
+other skipped or expected-failure cases fail stable checks.
 
 Each job has a time limit; superseded runs are cancelled. Failed or skipped layers
 fail the aggregate gate. Tests run on isolated temporary data and containers;

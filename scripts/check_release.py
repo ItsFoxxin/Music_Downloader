@@ -3,6 +3,7 @@ import argparse
 from pathlib import Path
 import re
 import subprocess
+import sys
 import xml.etree.ElementTree as ET
 
 
@@ -27,7 +28,18 @@ def main():
     for report in args.reports or []:
         cases = ET.parse(report).findall('.//testcase')
         assert cases, f"No test cases in {report}"
-        assert all(not any(case.find(tag) is not None for tag in ("skipped", "failure", "error")) for case in cases), f"Stable tests must pass without skips: {report}"
+        windows_only = {
+            "test_windows_import_lock_initializes_once_under_lock": "Windows marker initialization is platform-specific",
+            "test_windows_import_lock_fails_closed_without_rewriting_an_unknown_file": "Windows marker validation is platform-specific",
+        }
+        for case in cases:
+            assert case.find("failure") is None and case.find("error") is None, f"Stable test failed: {report}"
+            skipped = case.find("skipped")
+            if skipped is not None:
+                allowed = (sys.platform.startswith("linux") and case.get("classname", "").endswith("test_library")
+                           and case.get("name") in windows_only
+                           and skipped.get("message") == windows_only[case.get("name")])
+                assert allowed, f"Unexpected skipped stable test: {case.get('name')} in {report}"
     print(f"Release metadata passed: {version}")
 
 

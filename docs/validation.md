@@ -2,6 +2,12 @@
 
 ## Bundled VPN update - 2026-10-14
 
+The first 0.2.0 CI run passed metadata, Compose, and Linux tests (34 media;
+214 music with two Windows-only skips). Image builds passed, but container startup
+exposed unsupported environment-backed secrets in read-only Music services.
+Version 0.2.1 replaces those with the existing environment values and retains the
+file-backed VPN key. See GitHub Actions for the latest commit's runtime result.
+
 - Release 0.2.0 metadata, Python/JavaScript syntax, and workflow YAML checks passed.
 - Local media tests: 30 passed, one Windows symlink case skipped, and three HTTP
   cases deselected after the Windows TestClient run stalled. The full HTTP suite

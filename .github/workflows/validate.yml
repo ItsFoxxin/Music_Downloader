@@ -71,7 +71,7 @@ jobs:
         env:
           PYTHONPATH: music/backend/src
         run: python -m pytest -c music/backend/pyproject.toml music/backend/tests -q --junitxml=reports/music.xml
-      - name: Stable tests cannot skip cases
+      - name: Reject unexpected skipped stable tests
         if: github.base_ref == 'master' || github.base_ref == 'main' || github.ref == 'refs/heads/master' || github.ref == 'refs/heads/main' || inputs.strict == true
         run: python scripts/check_release.py --reports reports/media.xml reports/music.xml
       - uses: actions/upload-artifact@v4

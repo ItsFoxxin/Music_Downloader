@@ -94,16 +94,8 @@ services:
       # them. Keep that disk-backed and bounded by the staging filesystem rather
       # than consuming the container's deliberately small /tmp tmpfs.
       TMPDIR: /staging/.upload-tmp
-      # Blank secrets are intentionally optional during initial setup. Some
-      # Compose front ends do not materialize an environment-backed secret
-      # file when its value is empty, so only advertise the file when set.
-      CSRF_SECRET_FILE: "${CSRF_SECRET:+/run/secrets/csrf_secret}"
-    secrets:
-      - source: csrf_secret
-        target: csrf_secret
-        uid: "${PUID:-10001}"
-        gid: "${PGID:-10001}"
-        mode: 0440
+      # Environment-backed Compose secrets cannot mount into read-only services.
+      CSRF_SECRET: "${CSRF_SECRET:-}"
     expose:
       - "8000"
     volumes:
@@ -145,14 +137,7 @@ services:
       WORKER_HEARTBEAT_MAX_AGE_SECONDS: "${WORKER_HEARTBEAT_MAX_AGE_SECONDS:-120}"
       JELLYFIN_URL: "${JELLYFIN_URL:-}"
       JELLYFIN_API_KEY: "${JELLYFIN_API_KEY:-}"
-      JELLYFIN_API_KEY_FILE: "${JELLYFIN_API_KEY:+/run/secrets/jellyfin_api_key}"
       JELLYFIN_TIMEOUT_SECONDS: "${JELLYFIN_TIMEOUT_SECONDS:-15}"
-    secrets:
-      - source: jellyfin_api_key
-        target: jellyfin_api_key
-        uid: "${PUID:-10001}"
-        gid: "${PGID:-10001}"
-        mode: 0440
     volumes:
       - type: bind
         source: "${CONFIG_PATH:-./data/config}"
@@ -224,7 +209,7 @@ services:
       args:
         APP_UID: "${PUID:-10001}"
         APP_GID: "${PGID:-10001}"
-    image: fox-den-media:0.2.0
+    image: fox-den-media:0.2.1
     user: "${PUID:-10001}:${PGID:-10001}"
     init: true
     read_only: true
@@ -329,9 +314,5 @@ services:
     restart: unless-stopped
 
 secrets:
-  csrf_secret:
-    environment: CSRF_SECRET
-  jellyfin_api_key:
-    environment: JELLYFIN_API_KEY
   proton_wireguard_private_key:
     file: "${WIREGUARD_PRIVATE_KEY_FILE:-./secrets/proton-wireguard-private-key.txt}"

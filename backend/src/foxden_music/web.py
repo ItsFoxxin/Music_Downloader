@@ -483,6 +483,7 @@ def _activity_metrics(session: Session) -> dict[str, int]:
         ),
         "processing": int(
             acquisition_counts.get(AcquisitionState.VALIDATING.value, 0)
+            + acquisition_counts.get(AcquisitionState.IMPORT_STARTED.value, 0)
             + acquisition_counts.get(AcquisitionState.IMPORTING.value, 0)
             + sum(import_counts.get(state.value, 0) for state in ACTIVE_JOB_STATES)
             + import_counts.get(JobState.QUEUED.value, 0)

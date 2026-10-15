@@ -4,7 +4,7 @@
 
 Pushes and PRs to `dev` run sequential validation, regression tests, wheel
 packaging, and a real container build/startup smoke test. PRs to `main` add real-audio imports, a Python version
-matrix, an 80% coverage floor, desktop/mobile browser checks, and a dependency
+matrix, a 78% coverage floor, desktop/mobile browser checks, and a dependency
 vulnerability audit. CI does not deploy to the NAS.
 
 See [CI layers and required GitHub branch settings](docs/ci.md). Workflows report

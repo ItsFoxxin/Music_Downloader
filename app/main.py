@@ -1,11 +1,13 @@
 from contextlib import asynccontextmanager
 from pathlib import Path
+import base64
 import hmac
 import hashlib
 import os
 import secrets
 import shutil
 import time
+from urllib.parse import parse_qs, unquote_plus, urlsplit
 
 from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, JSONResponse
@@ -39,6 +41,46 @@ class ActionRequest(BaseModel):
 class AddRequest(BaseModel):
     magnet: str = Field(min_length=15, max_length=8192)
     category: str = Field(default="", max_length=100)
+
+
+class MediaRequestCreate(BaseModel):
+    query: str = Field(min_length=1, max_length=8192)
+    media_type: str = Field(pattern=r"^(Movie|TV)$")
+    title: str | None = Field(default=None, max_length=500)
+
+
+class MediaRequestAttach(BaseModel):
+    torrent_hash: str = Field(pattern=r"^[a-fA-F0-9]{40,64}$")
+
+
+def request_details(query, title=None):
+    value = query.strip()
+    torrent_hash = None
+    if value.startswith("magnet:?"):
+        params = parse_qs(urlsplit(value).query)
+        xt = next((x for x in params.get("xt", []) if x.lower().startswith("urn:btih:")), "")
+        torrent_hash = xt.rsplit(":", 1)[-1].lower()
+        if len(torrent_hash) == 32:
+            try:
+                torrent_hash = base64.b32decode(torrent_hash.upper()).hex()
+            except ValueError:
+                torrent_hash = ""
+        if not torrent_hash or len(torrent_hash) not in {40, 64} or any(c not in "0123456789abcdef" for c in torrent_hash):
+            raise ValueError("Magnet must contain a valid BitTorrent info hash.")
+        inferred = unquote_plus(params.get("dn", [""])[0]).strip()
+    else:
+        parsed = urlsplit(value)
+        if parsed.scheme and (parsed.scheme not in {"http", "https"} or not parsed.hostname):
+            raise ValueError("Use a title, an HTTP(S) IMDb/TMDB link, or a magnet link.")
+        if parsed.scheme:
+            value = parsed._replace(query="", fragment="").geturl()
+            inferred = unquote_plus(parsed.path.rstrip("/").rsplit("/", 1)[-1]).replace("-", " ").strip()
+        else:
+            inferred = value
+    display = (title or inferred or "Untitled request").strip()
+    if not display or len(display) > 500:
+        raise ValueError("Provide a destination title of 1 to 500 characters.")
+    return value, display, torrent_hash
 
 
 def create_app(settings=None, *, start_worker=True, qbit=None):
@@ -160,6 +202,30 @@ def create_app(settings=None, *, start_worker=True, qbit=None):
     def library():
         return store.imports()
 
+    @app.get("/api/requests", dependencies=[Depends(auth)])
+    def media_requests():
+        return store.media_requests()
+
+    @app.post("/api/requests", dependencies=[Depends(auth)], status_code=202)
+    def create_media_request(body: MediaRequestCreate):
+        query, title, torrent_hash = request_details(body.query, body.title)
+        acquisition_id = None
+        if torrent_hash:
+            acquisition_id = store.enqueue("add", {"magnet": query, "category": body.media_type.lower()})["id"]
+        public_query = "Magnet link" if torrent_hash else query
+        return store.create_request(body.media_type, public_query, title, torrent_hash, acquisition_id)
+
+    @app.post("/api/requests/{request_id}/attach", dependencies=[Depends(auth)], status_code=202)
+    def attach_media_request(request_id: str, body: MediaRequestAttach):
+        request = store.media_request(request_id)
+        if not request:
+            raise HTTPException(404, "Request not found")
+        if request["status"] not in {"waiting_for_user", "failed"}:
+            raise ValueError("This request already has an active torrent.")
+        return store.update_request(request_id, torrent_hash=body.torrent_hash.lower(),
+                                    status="acquiring", validation_id=None,
+                                    import_id=None, error=None)
+
     @app.post("/api/validate", dependencies=[Depends(auth)], status_code=202)
     def queue_validation(body: ValidationRequest):
         if bool(body.source) == bool(body.torrent_hash):
@@ -176,7 +242,11 @@ def create_app(settings=None, *, start_worker=True, qbit=None):
         review = store.job(body.validation_id)
         if not review or review["kind"] != "validate" or review["status"] != "succeeded":
             raise ValueError("Complete file validation before importing.")
-        return store.enqueue("import", body.model_dump())
+        job = store.enqueue("import", body.model_dump())
+        request = store.request_for_validation(body.validation_id)
+        if request:
+            store.update_request(request["id"], status="importing", import_id=job["id"], error=None)
+        return job
 
     @app.post("/api/library/{import_id}/audit", dependencies=[Depends(auth)], status_code=202)
     def queue_audit(import_id: str):

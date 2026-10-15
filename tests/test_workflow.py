@@ -228,3 +228,73 @@ def test_tampered_session_refused(settings):
     with TestClient(create_app(settings,start_worker=False)) as client:
         client.cookies.set('foxden_session','12345.fake.signature')
         assert client.get('/api/status').status_code==401
+
+
+def test_media_request_name_attach_and_review(settings, movie):
+    class Complete:
+        def torrents(self):
+            return [{'hash':'c'*40, 'name':'Moon Trip', 'progress':1,
+                     'amount_left':0, 'state':'uploading'}]
+        def manifest(self, torrent_hash):
+            assert torrent_hash == 'c'*40
+            return [{'path':movie.relative_to(settings.staging).as_posix(),
+                     'size':movie.stat().st_size}]
+        def add(self, magnet, category):
+            raise AssertionError('name requests must not add a torrent')
+
+    app=create_app(settings,start_worker=False,qbit=Complete())
+    headers={'Authorization':'Bearer '+settings.token}
+    with TestClient(app) as client:
+        created=client.post('/api/requests',headers=headers,
+                            json={'query':'Moon Trip (2026)','media_type':'Movie'})
+        assert created.status_code==202
+        request=created.json()
+        assert request['status']=='waiting_for_user'
+        attached=client.post(f"/api/requests/{request['id']}/attach",headers=headers,
+                             json={'torrent_hash':'c'*40})
+        assert attached.status_code==202
+        app.state.worker.sync_requests(force=True)
+        request=client.get('/api/requests',headers=headers).json()[0]
+        assert request['status']=='validating'
+        app.state.worker.run_one()
+        app.state.worker.sync_requests(force=True)
+        request=client.get('/api/requests',headers=headers).json()[0]
+        assert request['status']=='needs_review'
+        assert request['validation_id']
+        imported=client.post('/api/import',headers=headers,
+                             json={'validation_id':request['validation_id'],
+                                   'category':'Movies','name':'Moon Trip (2026)'})
+        assert imported.status_code==202
+        app.state.worker.run_one()
+        app.state.worker.sync_requests(force=True)
+        request=client.get('/api/requests',headers=headers).json()[0]
+        assert request['status']=='complete'
+
+
+def test_media_request_magnet_is_private_and_queued(settings):
+    class QbitUnused:
+        def close(self): pass
+    app=create_app(settings,start_worker=False,qbit=QbitUnused())
+    headers={'Authorization':'Bearer '+settings.token}
+    magnet='magnet:?xt=urn:btih:'+'d'*40+'&dn=Example+Movie&tr=https%3A%2F%2Fprivate.invalid%2Ftoken'
+    with TestClient(app) as client:
+        created=client.post('/api/requests',headers=headers,
+                            json={'query':magnet,'media_type':'Movie'})
+        assert created.status_code==202
+        data=created.json()
+        assert data['title']=='Example Movie'
+        assert data['status']=='acquiring'
+        assert data['query']=='Magnet link'
+        listing=client.get('/api/requests',headers=headers).text
+        assert 'private.invalid' not in listing
+        jobs=client.get('/api/jobs',headers=headers).text
+        assert 'private.invalid' not in jobs
+
+
+def test_request_input_rejects_unsafe_scheme(settings):
+    app=create_app(settings,start_worker=False)
+    headers={'Authorization':'Bearer '+settings.token}
+    with TestClient(app) as client:
+        response=client.post('/api/requests',headers=headers,
+                             json={'query':'file:///etc/passwd','media_type':'TV'})
+        assert response.status_code==400

@@ -1,5 +1,26 @@
 # Changelog
 
+## 0.3.0 - 2026-10-15
+
+### Added
+
+- Durable Movie/TV request inbox for names, HTTP(S) metadata links, and magnets.
+- Request tracking from qBittorrent acquisition through automatic validation,
+  reviewed import, and completion.
+- Existing-torrent attachment for title/link requests and dashboard state views.
+- Tests for the request lifecycle, private magnet redaction, and unsafe schemes.
+
+### Security
+
+- Magnet and tracker parameters remain server-side and are excluded from request
+  and activity API responses.
+- HTTP(S) request-link query strings and fragments are discarded before storage.
+
+### Boundary
+
+- Fox Den does not automatically select a torrent from a title in this release.
+  Selection remains visible; validation and import safeguards remain unchanged.
+
 ## 0.2.1 - 2026-10-14
 
 ### Fixed

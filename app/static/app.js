@@ -5,7 +5,7 @@ const size = n => { if (n == null) return "—"; const units=["B","KB","MB","GB"
 const time = n => new Date(n * 1000).toLocaleString();
 const empty = (title, text, icon="◇") => `<div class="empty"><span class="empty-icon">${icon}</span><strong>${esc(title)}</strong>${esc(text)}</div>`;
 const badge = (label, tone="") => `<span class="badge ${tone}">${esc(label)}</span>`;
-let state={status:null,torrents:[],torrentError:"",staging:[],jobs:[],library:[]}, tab="overview", activeReview=null, busy=false, token="", authenticated=false;
+let state={status:null,torrents:[],torrentError:"",staging:[],jobs:[],library:[],requests:[]}, tab="overview", activeReview=null, busy=false, token="", authenticated=false;
 
 async function api(path, body){
   const response=await fetch(`./api/${path}`,{method:body===undefined?"GET":"POST",headers:{...(token?{"Authorization":`Bearer ${token}`}:{ }),"Content-Type":"application/json","X-Foxden-Request":"1"},body:body===undefined?undefined:JSON.stringify(body)});
@@ -39,8 +39,8 @@ function label(job){
 async function refresh(){
   if(!authenticated||busy)return;busy=true;
   try {
-    const [status,jobs,staging,library,torrents]=await Promise.allSettled([api("status"),api("jobs"),api("staging"),api("library"),api("torrents")]);
-    for(const [key,result] of Object.entries({status,jobs,staging,library})){
+    const [status,jobs,staging,library,requests,torrents]=await Promise.allSettled([api("status"),api("jobs"),api("staging"),api("library"),api("requests"),api("torrents")]);
+    for(const [key,result] of Object.entries({status,jobs,staging,library,requests})){
       if(result.status==="fulfilled")state[key]=result.value;else throw result.reason;
     }
     if(torrents.status==="fulfilled"){state.torrents=torrents.value;state.torrentError="";}else{state.torrents=[];state.torrentError=torrents.reason.message;}
@@ -60,6 +60,19 @@ function stagingTable(){
   if(!rows.length)return empty("Staging is clear","Completed downloads will appear here when your staging folder is connected.","▱");
   return `<div class="expanded">For torrent completeness checks, validate from Downloads. Staging validation checks file stability and media readability without linking to a torrent.</div>`+table(["File or folder","Kind","Size","Action"],rows.map(f=>`<tr><td class="name">${esc(f.name)}</td><td>${badge(f.blocked?"Blocked link":f.directory?"Folder":"File",f.blocked?"error":"")}</td><td>${size(f.size)}</td><td><button class="mini" data-action="validate-source" data-id="${esc(f.path)}" ${f.blocked?"disabled":""}>Validate files →</button></td></tr>`));
 }
+function requestTable(){
+  const rows=filter(state.requests,r=>`${r.title} ${r.media_type} ${r.status} ${r.query}`);
+  if(!rows.length)return empty("Your request list is ready","Request a movie or TV show by name, metadata link, or magnet.","＋");
+  const choices=state.torrents.map(t=>`<option value="${esc(t.hash)}">${esc(t.name)}</option>`).join("");
+  return `<div class="expanded">Magnet requests are tracked automatically. For a name or IMDb/TMDB link, add the matching download in qBittorrent and attach it here.</div>`+table(["Request","Type","State","Next step"],rows.map(r=>{
+    const tone=r.status==="failed"?"error":["waiting_for_user","needs_review"].includes(r.status)?"warn":"";
+    let action="";
+    if(r.status==="waiting_for_user") action=choices?`<div class="actions"><select id="torrent-${r.id}" aria-label="Torrent for ${esc(r.title)}"><option value="">Choose a torrent…</option>${choices}</select><button class="mini" data-action="attach-request" data-id="${r.id}">Attach</button></div>`:`<small>Open qBittorrent and add a matching download.</small>`;
+    else if(r.status==="needs_review") action=`<button class="mini" data-action="review" data-id="${esc(r.validation_id)}">Review import →</button>`;
+    else action=`<small>${r.error?esc(r.error):r.status==="complete"?"Imported and verified.":"Fox Den is following this request."}</small>`;
+    return `<tr><td class="name"><span class="row-title">${esc(r.title)}</span><small>${esc(r.query)}</small></td><td>${esc(r.media_type)}</td><td>${badge(r.status.replaceAll("_"," "),tone)}</td><td>${action}</td></tr>`;
+  }));
+}
 function libraryTable(){
   const rows=filter(state.library,f=>f.destination);
   if(!rows.length)return empty("Make room for movie night","Your approved imports will appear here with their checksums and last verification.","▤");
@@ -78,16 +91,16 @@ function settingsPanel(){
 function render(){
   if(!state.status)return;
   $("app-version").textContent=`Fox Den Media · v${state.status.version}`;
-  const names={overview:["Overview","From download <br>to movie night<span>.</span>","On the way in"],downloads:["Downloads","A little closer to play<span>.</span>","Download queue"],staging:["Staging & review","Almost home<span>.</span>","Your staging folder"],library:["Movie & TV library","A collection worth keeping<span>.</span>","Imported movies & TV"],history:["Activity","Every step, accounted for<span>.</span>","Workspace activity"],settings:["Connections","Everything, connected<span>.</span>","Your workspace settings"]};
+  const names={overview:["Overview","From download <br>to movie night<span>.</span>","On the way in"],requests:["Requests","Ask once. Follow every step<span>.</span>","Movie & TV requests"],downloads:["Downloads","A little closer to play<span>.</span>","Download queue"],staging:["Staging & review","Almost home<span>.</span>","Your staging folder"],library:["Movie & TV library","A collection worth keeping<span>.</span>","Imported movies & TV"],history:["Activity","Every step, accounted for<span>.</span>","Workspace activity"],settings:["Connections","Everything, connected<span>.</span>","Your workspace settings"]};
   $("breadcrumb").textContent=names[tab][0];$("page-title").innerHTML=names[tab][1];$("panel-title").textContent=names[tab][2];
-  $("panel-eyebrow").textContent=tab==="settings"?"CONFIGURED ON YOUR SERVER":tab==="history"?"DURABLE JOB HISTORY":tab==="staging"?"WAITING OUTSIDE THE LIBRARY":tab==="library"?"A VERIFIED PLACE TO LAND":"LIVE FROM YOUR DOWNLOADER";
+  $("panel-eyebrow").textContent=tab==="settings"?"CONFIGURED ON YOUR SERVER":tab==="history"?"DURABLE JOB HISTORY":tab==="requests"?"REQUEST TO VERIFIED LIBRARY":tab==="staging"?"WAITING OUTSIDE THE LIBRARY":tab==="library"?"A VERIFIED PLACE TO LAND":"LIVE FROM YOUR DOWNLOADER";
   document.querySelectorAll("[data-tab]").forEach(b=>{b.classList.toggle("active",b.dataset.tab===tab);if(b.dataset.tab===tab)b.setAttribute("aria-current","page");else b.removeAttribute("aria-current");});
   $("overview-extra").hidden=tab!=="overview";$("review-panel").hidden=!["overview","staging"].includes(tab);$("search").hidden=tab==="settings";
   $("connection").textContent=state.torrentError?"qBittorrent offline":"qBittorrent connected";$("connection").className=`badge ${state.torrentError?"warn":""}`;
   $("demo-banner").hidden=!state.status.demo;
   const url=state.status.qbit_public_url;$("open-qbit").hidden=!url;if(url)$("open-qbit").href=url;
-  $("stat-downloads").textContent=state.torrentError?"—":state.torrents.length;$("download-count").textContent=state.torrents.length;$("stat-review").textContent=ready().length;$("stat-library").textContent=state.library.length;$("stat-free").textContent=size(state.status.free_bytes);
-  $("content").innerHTML=({overview:torrentTable,downloads:torrentTable,staging:stagingTable,library:libraryTable,history:historyTable,settings:settingsPanel}[tab])();
+  $("stat-downloads").textContent=state.torrentError?"—":state.torrents.length;$("download-count").textContent=state.torrents.length;$("request-count").textContent=state.requests.filter(r=>r.status!=="complete").length;$("stat-review").textContent=ready().length;$("stat-library").textContent=state.library.length;$("stat-free").textContent=size(state.status.free_bytes);
+  $("content").innerHTML=({overview:torrentTable,requests:requestTable,downloads:torrentTable,staging:stagingTable,library:libraryTable,history:historyTable,settings:settingsPanel}[tab])();
   $("reviews").innerHTML=ready().length?ready().map(j=>`<div class="review-row"><div><b>${esc(label(j))}</b><p>${j.result.files.length} files · ${size(j.result.bytes)} · ${j.result.warnings.length?"Review notes included":"Validation complete"}</p></div><button class="mini" data-action="review" data-id="${j.id}">Review import →</button></div>`).join(""):empty("Nothing needs your approval yet","Validate a completed download to preview the files before import.","✓");
 }
 function openReview(id){
@@ -106,7 +119,10 @@ document.addEventListener("click",async e=>{
     if(action==="validate-torrent")await api("validate",{torrent_hash:id});
     else if(action==="validate-source")await api("validate",{source:id});
     else if(action==="audit")await api(`library/${id}/audit`,{});
-    else await api("torrents/action",{torrent_hash:id,action});
+    else if(action==="attach-request"){
+      const hash=$("torrent-"+id).value;if(!hash)throw new Error("Choose a qBittorrent download first.");
+      await api(`requests/${id}/attach`,{torrent_hash:hash});
+    } else await api("torrents/action",{torrent_hash:id,action});
     toast(action.startsWith("validate")?"Validation queued. Full media checks can take a while; follow progress in Activity.":action==="recheck"?"Recheck requested. Wait for qBittorrent to finish before validating.":"Action queued. Follow its result in Activity.");await refresh();
   }catch(error){toast(error.message);}finally{button.disabled=false;}
 });
@@ -118,5 +134,10 @@ $("add-magnet").addEventListener("click",()=>$("magnet-dialog").showModal());
 $("magnet-form").addEventListener("submit",async e=>{
   e.preventDefault();const button=e.submitter;button.disabled=true;
   try{await api("torrents/add",{magnet:$("magnet").value.trim(),category:$("magnet-category").value.trim()});$("magnet-dialog").close();$("magnet").value="";toast("Magnet submission queued. Check Activity for qBittorrent’s response.");await refresh();}catch(error){toast(error.message);}finally{button.disabled=false;}
+});
+$("new-request").addEventListener("click",()=>$("request-dialog").showModal());
+$("request-form").addEventListener("submit",async e=>{
+  e.preventDefault();const button=e.submitter;button.disabled=true;
+  try{await api("requests",{query:$("request-query").value.trim(),media_type:$("request-type").value,title:$("request-title").value.trim()||null});$("request-dialog").close();$("request-query").value="";$("request-title").value="";tab="requests";toast("Request created. Fox Den will follow it through validation and import.");await refresh();}catch(error){toast(error.message);}finally{button.disabled=false;}
 });
 api("session").then(()=>unlock()).catch(()=>{});setInterval(()=>{if(!document.hidden)refresh();},10000);

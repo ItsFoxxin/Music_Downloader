@@ -1,6 +1,6 @@
 # Fox Den Media
 
-Current development release: **0.2.1**. See [CHANGELOG.md](CHANGELOG.md).
+Current development release: **0.3.0**. See [CHANGELOG.md](CHANGELOG.md).
 
 One self-hosted Docker project for **music, movies, and TV**. The existing Fox Den
 Music downloader lives alongside a new qBittorrent dashboard and a reviewed,
@@ -12,6 +12,9 @@ verified staging-to-library workflow. One gateway and one login connect both.
   validation, MusicBrainz matching, imports, and library views from Fox Den Music 2.3.4.
 - Movie/TV dashboard with qBittorrent progress, transfer rates, start/stop,
   recheck requests, magnet submission, and a link to the original Web UI.
+- Durable Movie/TV request inbox accepting titles, metadata links, and magnets.
+  Attached downloads advance automatically through completion and validation,
+  then pause for the existing reviewed import.
 - Read-only staging browser and durable SQLite jobs for validation and imports.
 - FFprobe inspection, full audio/video decoding with FFmpeg (default), file
   stability/size checks, SHA-256 checksums, and explicit excluded-file reports.
@@ -89,6 +92,12 @@ its own schema upgrade instructions in [music/README.md](music/README.md).
 
 ## Staging-to-library workflow
 
+You can begin in **Requests** with a title, IMDb/TMDB link, or magnet. Magnet
+requests start in qBittorrent immediately. For a title or metadata link, add the
+matching download in qBittorrent and attach it to the request. Fox Den then
+tracks download completion and queues validation automatically. See the
+[request workflow](docs/requests.md) for states and safety boundaries.
+
 1. Download through qBittorrent. Use its Web UI or submit a magnet in Fox Den.
 2. In **Downloads**, choose **Validate** on a completed torrent. Fox Den verifies
    selected-file completion and maps qBittorrent's save path to its read-only mount.
@@ -103,7 +112,7 @@ You can also validate files directly from **Staging & review**. This checks stab
 files and readable media, but does **not** prove a corresponding torrent is complete.
 Archives and executable files are excluded and never executed or extracted.
 
-Folder selection is manual in this release. Existing destination directories are
+Torrent selection for name/link requests and folder selection are manual in this release. Existing destination directories are
 never merged or overwritten. For additional TV episodes, select a new episode/batch
 subfolder (for example `Show Name/Season 01/Episodes 03-04`) or import a complete
 season to a new season folder. Full movie/TV identity matching, automatic renaming,

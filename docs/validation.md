@@ -1,5 +1,22 @@
 # Validation evidence
 
+## Request workflow 0.3.0 - 2026-10-15
+
+- Media workflow suite: **36 passed, 1 skipped** on Windows. The skipped case
+  requires local symlink privileges. Tests include a real FFmpeg-generated movie
+  moving from a name request through torrent attachment, automatic validation,
+  and review readiness.
+- Bundled music regression suite: **214 passed, 2 skipped** on Windows. Both
+  skips require local symlink privileges.
+- Dependency integrity (`pip check`), Python compilation, JavaScript syntax, and
+  release metadata checks passed for version 0.3.0.
+- Request tests also verify that magnet tracker parameters do not appear in the
+  request or activity APIs and that unsupported URL schemes are rejected.
+- Docker is unavailable in this local environment. Compose topology, image
+  builds, and running-container smoke tests remain GitHub CI checks for this
+  commit. Live qBittorrent, VPN, NAS mounts, and seeding behavior remain
+  deployment checks.
+
 ## Bundled VPN update - 2026-10-14
 
 The first 0.2.0 CI run passed metadata, Compose, and Linux tests (34 media;

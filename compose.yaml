@@ -209,7 +209,7 @@ services:
       args:
         APP_UID: "${PUID:-10001}"
         APP_GID: "${PGID:-10001}"
-    image: fox-den-media:0.2.1
+    image: fox-den-media:0.3.0
     user: "${PUID:-10001}:${PGID:-10001}"
     init: true
     read_only: true

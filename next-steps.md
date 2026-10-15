@@ -14,6 +14,8 @@
 
 ## Follow-on product work
 
+- A configurable resolver/indexer adapter for name and metadata-link requests,
+  with explicit selection policy and no CAPTCHA bypass.
 - Movie/TV identity matching and reviewed metadata/filename suggestions.
 - Series-aware incremental episode imports into existing season folders while
   preserving no-overwrite behavior and crash recovery.

@@ -105,6 +105,10 @@ def main():
             assert b'id="login-form"' in request("/")  # gateway redirects anonymous music visitors
             request("/transfers/api/session", {}, headers={"Authorization": "Bearer " + token})
             assert api("status")["version"] == version
+            media_request = api("requests", {"query": "CI Requested Movie (2026)",
+                                              "media_type": "Movie"}, expected=202)
+            assert media_request["status"] == "waiting_for_user"
+            assert any(item["id"] == media_request["id"] for item in api("requests"))
             assert b'id="app-version"' in request("/transfers/")
             request("/transfers/assets/app.js")
             assert b"Fox Den" in request("/")  # real music web application through shared session
@@ -136,9 +140,10 @@ def main():
                 run("restart", "media")
                 wait_health()
                 assert any(item["id"] == imported["id"] for item in api("library")), "Import lost after restart"
+                assert any(item["id"] == media_request["id"] for item in api("requests")), "Request lost after restart"
             api("logout", {})
             request("/transfers/api/status", expected=401)
-            print("PASS: built containers, gateway, shared auth, version, permissions" +
+            print("PASS: built containers, gateway, shared auth, version, request persistence, permissions" +
                   (", full decode, import, audit, no overwrite, source preservation, restart persistence" if args.strict else ""))
         except BaseException:
             run("logs", "--no-color", "--tail", "100", check=False)

@@ -20,6 +20,7 @@ from fastapi import (
     File,
     Form,
     HTTPException,
+    Query,
     Request,
     UploadFile,
     status,
@@ -385,7 +386,11 @@ def _effective_acquisition_state(acquisition: AcquisitionJob) -> str:
     }:
         return AcquisitionState.IMPORTING.value
     if import_job.state in {state.value for state in ACTIVE_JOB_STATES} | {JobState.QUEUED.value}:
-        return AcquisitionState.VALIDATING.value
+        return (
+            AcquisitionState.VALIDATING.value
+            if acquisition.query_text is not None
+            else AcquisitionState.IMPORT_STARTED.value
+        )
     return acquisition.state
 
 
@@ -1114,9 +1119,21 @@ def create_app(settings: Settings | None = None, database: Database | None = Non
     def acquisition_detail(
         request: Request,
         acquisition_id: str,
+        from_browser: str | None = Query(None, alias="from"),
         session: Session = Depends(session_dependency),
     ) -> HTMLResponse:
         acquisition = load_acquisition(session, acquisition_id)
+        if (
+            from_browser is not None
+            and acquisition.query_text is None
+            and acquisition.state == AcquisitionState.ACQUIRING.value
+        ):
+            transition_acquisition(
+                session,
+                acquisition,
+                AcquisitionState.WAITING_FOR_DOWNLOAD,
+                "Returned from server browser; waiting for the completed download",
+            )
         manifest = json.loads(acquisition.manifest_json) if acquisition.manifest_json else None
         validation = json.loads(acquisition.validation_json) if acquisition.validation_json else None
         confidence_reasons = (
@@ -1468,12 +1485,20 @@ def create_app(settings: Settings | None = None, database: Database | None = Non
             )
         )
         acquisition.associated_import_job_id = job_id
-        transition_acquisition(
-            session,
-            acquisition,
-            AcquisitionState.VALIDATING,
-            "Downloaded file isolated in request staging; validation queued",
-        )
+        if acquisition.query_text:
+            transition_acquisition(
+                session,
+                acquisition,
+                AcquisitionState.VALIDATING,
+                "Downloaded file isolated in request staging; validation queued",
+            )
+        else:
+            transition_acquisition(
+                session,
+                acquisition,
+                AcquisitionState.IMPORT_STARTED,
+                "Upload handed to the secure importer",
+            )
         add_event(
             session,
             import_job,

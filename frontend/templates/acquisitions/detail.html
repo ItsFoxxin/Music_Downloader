@@ -119,7 +119,7 @@
       <button class="button" type="submit">Cancel request</button>
     </form>
     {% elif acquisition.state == 'CANCELLED' and not acquisition.associated_import_job_id %}
-    <section class="panel danger-panel"><p class="eyebrow">Cancelled</p><h2>Import was not started</h2><p class="muted">The request is preserved in history. No staging or music files were removed.</p></section>
+    <section class="panel danger-panel"><p class="eyebrow">Request cancelled</p><h2>Import was not started</h2><p class="muted">The request was cancelled before handoff and is preserved in history. No staging or music files were removed.</p></section>
     {% elif acquisition.import_job %}
     <section class="panel"><p class="eyebrow">Linked import</p><h2>Stage 1 is in control</h2><p>{{ acquisition.import_job.track_count }} track{{ '' if acquisition.import_job.track_count == 1 else 's' }} inspected so far.</p><a class="button" href="/jobs/{{ acquisition.import_job.id }}">Open import details</a></section>
     {% endif %}

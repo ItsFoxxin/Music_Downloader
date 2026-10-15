@@ -2,14 +2,33 @@
 
 ## GitHub CI: development and release gates
 
-Pushes and PRs to `dev` run regression/configuration checks and a real container
-build/startup smoke test. PRs to `master` add real-audio imports, a Python version
+Pushes and PRs to `dev` run sequential validation, regression tests, wheel
+packaging, and a real container build/startup smoke test. PRs to `main` add real-audio imports, a Python version
 matrix, an 80% coverage floor, desktop/mobile browser checks, and a dependency
 vulnerability audit. CI does not deploy to the NAS.
 
 See [CI layers and required GitHub branch settings](docs/ci.md). Workflows report
-results; branch protection must require **Dev gate** / **Master gate** to block
+results; branch protection must require **Dev gate** / **Main gate** to block
 unsafe merges.
+
+## v2.5.0 · Automated music-request workflow
+
+Fox Den Music now accepts artist/song and artist/album names, artist requests,
+Spotify track/album/playlist links, and MusicBrainz recording/release links.
+Requests move through `REQUESTED → RESOLVING → ACQUIRING → VALIDATING →
+NEEDS_REVIEW / IMPORTING → COMPLETE`. Resolution produces a persisted,
+MusicBrainz-based manifest before acquisition begins. Spotify playlists are
+expanded into independent child track requests so one failure does not discard
+successful items.
+
+Acquisition is adapter-backed. `MANUAL_BROWSER` opens a configured HTTPS
+provider for login, CAPTCHA, or ambiguous human choices; `FILESYSTEM_DROP`
+watches `/downloads/<request-id>`. Both feed the existing secure importer, and
+neither writes directly to the final library. Automatic importing is disabled
+by default. Optional Chromaprint/AcoustID evidence can be enabled when `fpcalc`
+is installed.
+
+See [v2.5.0 release notes and manual test](docs/request-workflow-v2.5.0.md).
 
 ## v2.4.0 · A shared Fox Den workspace
 
@@ -34,9 +53,9 @@ inspects it, matches MusicBrainz releases, pauses for ambiguous metadata, tags
 a working copy, checks duplicates, assembles a complete album, and publishes it
 with one no-overwrite atomic rename.
 
-Stage 2 does **not** automate a browser, CAPTCHA, download, or private provider
-endpoint. It does not circumvent DRM or access controls. The user downloads
-normally in their own browser and uploads the result to the acquisition job.
+Fox Den Music does **not** bypass CAPTCHAs, login controls, DRM, or provider
+access controls. A provider that requires human interaction pauses in
+`WAITING_FOR_USER` and exposes the contained browser.
 
 ## Architecture
 
@@ -55,9 +74,10 @@ The project continues to use one image and two ordinary processes:
   one worker are intentional.
 - `/staging/jobs/<import-job-id>`: immutable incoming source plus generated
   extraction and working areas.
-- `/staging/acquisitions/<acquisition-id>/incoming`: reserved Stage 3 handoff
-  location. Stage 2 creates it but does not watch it; use the acquisition upload
-  form.
+- `/staging/acquisitions/<request-id>`: request-specific metadata, incoming,
+  and download handoff area.
+- `/downloads/<request-id>`: isolated provider output for the filesystem-drop
+  adapter. Partial browser files and unsupported types are never handed off.
 - `/music/.imports/<import-job-id>/album`: complete pre-publish album.
 - `/music/<Album Artist>/<Album> (<Year>)`: final library destination.
 

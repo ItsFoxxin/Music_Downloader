@@ -39,6 +39,7 @@ dist/
 # Tests and tooling
 .pytest_cache/
 .pytest-*/
+.tmp/
 .pytest-cancel*/
 .mypy_cache/
 .ruff_cache/

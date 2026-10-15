@@ -324,6 +324,46 @@ class MusicBrainzClient:
             namespace="musicbrainz-release",
         )
 
+    def lookup_recording(self, recording_id: str) -> Mapping[str, Any]:
+        canonical_id = _canonical_mbid(recording_id)
+        return self._request_json(
+            f"recording/{canonical_id}",
+            params={"fmt": "json", "inc": "artist-credits+isrcs+releases"},
+            namespace="musicbrainz-recording",
+        )
+
+    def search_recordings(
+        self, title: str, *, artist: str | None = None, limit: int = 10
+    ) -> list[Mapping[str, Any]]:
+        parts = [f"recording:{_lucene_phrase(title)}"]
+        if artist:
+            parts.append(f"artist:{_lucene_phrase(artist)}")
+        payload = self._request_json(
+            "recording/",
+            params={"query": " AND ".join(parts), "fmt": "json", "limit": str(limit)},
+            namespace="musicbrainz-recording-search",
+        )
+        rows = payload.get("recordings")
+        return [item for item in rows if isinstance(item, Mapping)] if isinstance(rows, list) else []
+
+    def search_recording_by_isrc(self, isrc: str, *, limit: int = 10) -> list[Mapping[str, Any]]:
+        payload = self._request_json(
+            "recording/",
+            params={"query": f"isrc:{_lucene_phrase(isrc)}", "fmt": "json", "limit": str(limit)},
+            namespace="musicbrainz-isrc-search",
+        )
+        rows = payload.get("recordings")
+        return [item for item in rows if isinstance(item, Mapping)] if isinstance(rows, list) else []
+
+    def search_artists(self, name: str, *, limit: int = 10) -> list[Mapping[str, Any]]:
+        payload = self._request_json(
+            "artist/",
+            params={"query": f"artist:{_lucene_phrase(name)}", "fmt": "json", "limit": str(limit)},
+            namespace="musicbrainz-artist-search",
+        )
+        rows = payload.get("artists")
+        return [item for item in rows if isinstance(item, Mapping)] if isinstance(rows, list) else []
+
     def _request_json(
         self,
         path: str,

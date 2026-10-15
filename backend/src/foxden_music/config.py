@@ -29,6 +29,16 @@ class Settings(BaseSettings):
     download_inbox_max_files: int = 200
     download_inbox_move_files: bool = True
     download_inbox_auto_import: bool = True
+    music_request_provider: str = "MANUAL_BROWSER"
+    music_request_provider_url: str | None = None
+    music_request_auto_import: bool = False
+    music_request_high_confidence_threshold: float = 96.0
+    music_request_min_bitrate: int = 128_000
+    music_request_preferred_sample_rate: int = 44_100
+    acoustid_api_key: str | None = None
+    acoustid_base_url: str = "https://api.acoustid.org/v2/lookup"
+    chromaprint_enabled: bool = False
+    fpcalc_path: str = "fpcalc"
     remote_browser_url: str | None = None
     database_url: str | None = None
 
@@ -72,6 +82,9 @@ class Settings(BaseSettings):
     spotidownloader_url: str = "https://spotidownloader.com/"
     spotify_batch_max_urls: int = 100
     spotify_batch_max_characters: int = 20_000
+    spotify_client_id: str | None = None
+    spotify_client_secret: str | None = None
+    spotify_client_secret_file: Path | None = None
 
     @field_validator("log_level")
     @classmethod
@@ -83,6 +96,11 @@ class Settings(BaseSettings):
         "jellyfin_url",
         "download_inbox_dir",
         "remote_browser_url",
+        "music_request_provider_url",
+        "spotify_client_id",
+        "spotify_client_secret",
+        "spotify_client_secret_file",
+        "acoustid_api_key",
         mode="before",
     )
     @classmethod
@@ -128,7 +146,18 @@ class Settings(BaseSettings):
     def musicbrainz_user_agent(self) -> str | None:
         if not self.musicbrainz_contact:
             return None
-        return f"FoxDenMusic/2.4.0 ({self.musicbrainz_contact})"
+        return f"FoxDenMusic/2.5.0 ({self.musicbrainz_contact})"
+
+    @property
+    def resolved_spotify_client_secret(self) -> str | None:
+        if self.spotify_client_secret:
+            return self.spotify_client_secret.strip() or None
+        if self.spotify_client_secret_file:
+            try:
+                return self.spotify_client_secret_file.read_text(encoding="utf-8").strip() or None
+            except OSError:
+                return None
+        return None
 
     @property
     def jellyfin_configured(self) -> bool:

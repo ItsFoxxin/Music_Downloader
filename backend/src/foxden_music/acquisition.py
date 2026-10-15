@@ -248,8 +248,51 @@ def manual_provider(
 
 
 ALLOWED_ACQUISITION_TRANSITIONS: dict[AcquisitionState, frozenset[AcquisitionState]] = {
+    AcquisitionState.REQUESTED: frozenset(
+        {AcquisitionState.RESOLVING, AcquisitionState.FAILED, AcquisitionState.CANCELLED}
+    ),
+    AcquisitionState.RESOLVING: frozenset(
+        {
+            AcquisitionState.ACQUIRING,
+            AcquisitionState.WAITING_FOR_USER,
+            AcquisitionState.NEEDS_REVIEW,
+            AcquisitionState.COMPLETE,
+            AcquisitionState.FAILED,
+            AcquisitionState.CANCELLED,
+        }
+    ),
+    AcquisitionState.ACQUIRING: frozenset(
+        {
+            AcquisitionState.WAITING_FOR_USER,
+            AcquisitionState.VALIDATING,
+            AcquisitionState.FILE_RECEIVED,
+            AcquisitionState.REJECTED,
+            AcquisitionState.FAILED,
+            AcquisitionState.CANCELLED,
+        }
+    ),
+    AcquisitionState.VALIDATING: frozenset(
+        {
+            AcquisitionState.NEEDS_REVIEW,
+            AcquisitionState.IMPORTING,
+            AcquisitionState.COMPLETE,
+            AcquisitionState.REJECTED,
+            AcquisitionState.FAILED,
+            AcquisitionState.CANCELLED,
+        }
+    ),
+    AcquisitionState.IMPORTING: frozenset(
+        {
+            AcquisitionState.NEEDS_REVIEW,
+            AcquisitionState.COMPLETE,
+            AcquisitionState.REJECTED,
+            AcquisitionState.FAILED,
+            AcquisitionState.CANCELLED,
+        }
+    ),
     AcquisitionState.QUEUED: frozenset(
         {
+            AcquisitionState.VALIDATING,
             AcquisitionState.WAITING_FOR_USER,
             AcquisitionState.WAITING_FOR_DOWNLOAD,
             AcquisitionState.FILE_RECEIVED,
@@ -259,6 +302,10 @@ ALLOWED_ACQUISITION_TRANSITIONS: dict[AcquisitionState, frozenset[AcquisitionSta
     ),
     AcquisitionState.WAITING_FOR_USER: frozenset(
         {
+            AcquisitionState.REQUESTED,
+            AcquisitionState.RESOLVING,
+            AcquisitionState.ACQUIRING,
+            AcquisitionState.VALIDATING,
             AcquisitionState.WAITING_FOR_DOWNLOAD,
             AcquisitionState.FILE_RECEIVED,
             AcquisitionState.FAILED,
@@ -267,6 +314,8 @@ ALLOWED_ACQUISITION_TRANSITIONS: dict[AcquisitionState, frozenset[AcquisitionSta
     ),
     AcquisitionState.WAITING_FOR_DOWNLOAD: frozenset(
         {
+            AcquisitionState.ACQUIRING,
+            AcquisitionState.VALIDATING,
             AcquisitionState.WAITING_FOR_USER,
             AcquisitionState.FILE_RECEIVED,
             AcquisitionState.FAILED,
@@ -275,6 +324,7 @@ ALLOWED_ACQUISITION_TRANSITIONS: dict[AcquisitionState, frozenset[AcquisitionSta
     ),
     AcquisitionState.FILE_RECEIVED: frozenset(
         {
+            AcquisitionState.VALIDATING,
             AcquisitionState.IMPORT_STARTED,
             AcquisitionState.FAILED,
             AcquisitionState.CANCELLED,
@@ -282,6 +332,8 @@ ALLOWED_ACQUISITION_TRANSITIONS: dict[AcquisitionState, frozenset[AcquisitionSta
     ),
     AcquisitionState.IMPORT_STARTED: frozenset(
         {
+            AcquisitionState.VALIDATING,
+            AcquisitionState.IMPORTING,
             AcquisitionState.NEEDS_REVIEW,
             AcquisitionState.COMPLETE,
             AcquisitionState.FAILED,
@@ -290,6 +342,10 @@ ALLOWED_ACQUISITION_TRANSITIONS: dict[AcquisitionState, frozenset[AcquisitionSta
     ),
     AcquisitionState.NEEDS_REVIEW: frozenset(
         {
+            AcquisitionState.RESOLVING,
+            AcquisitionState.ACQUIRING,
+            AcquisitionState.VALIDATING,
+            AcquisitionState.IMPORTING,
             AcquisitionState.IMPORT_STARTED,
             AcquisitionState.COMPLETE,
             AcquisitionState.FAILED,
@@ -297,6 +353,9 @@ ALLOWED_ACQUISITION_TRANSITIONS: dict[AcquisitionState, frozenset[AcquisitionSta
         }
     ),
     AcquisitionState.COMPLETE: frozenset(),
+    AcquisitionState.REJECTED: frozenset(
+        {AcquisitionState.REQUESTED, AcquisitionState.ACQUIRING, AcquisitionState.CANCELLED}
+    ),
     AcquisitionState.FAILED: frozenset(
         {
             AcquisitionState.QUEUED,
@@ -308,7 +367,7 @@ ALLOWED_ACQUISITION_TRANSITIONS: dict[AcquisitionState, frozenset[AcquisitionSta
         }
     ),
     AcquisitionState.CANCELLED: frozenset(
-        {AcquisitionState.QUEUED, AcquisitionState.WAITING_FOR_USER}
+        {AcquisitionState.QUEUED, AcquisitionState.REQUESTED, AcquisitionState.WAITING_FOR_USER}
     ),
 }
 
@@ -364,11 +423,12 @@ def transition_acquisition(
         acquisition.file_received_at = now
     if target_state in {
         AcquisitionState.COMPLETE,
+        AcquisitionState.REJECTED,
         AcquisitionState.FAILED,
         AcquisitionState.CANCELLED,
     }:
         acquisition.finished_at = now
-    elif old_state in {AcquisitionState.FAILED, AcquisitionState.CANCELLED}:
+    elif old_state in {AcquisitionState.REJECTED, AcquisitionState.FAILED, AcquisitionState.CANCELLED}:
         acquisition.finished_at = None
         acquisition.error_message = None
     add_acquisition_event(session, acquisition, message, level=level)
@@ -435,14 +495,25 @@ _ACTIVE_IMPORT_STATE_VALUES = frozenset(state.value for state in ACTIVE_JOB_STAT
 
 
 def _acquisition_target_for_import(import_job: Job) -> AcquisitionState | None:
-    if import_job.state in _ACTIVE_IMPORT_STATE_VALUES:
-        return AcquisitionState.IMPORT_STARTED
+    if import_job.state in {
+        JobState.STAGING.value,
+        JobState.EXTRACTING.value,
+        JobState.INSPECTING.value,
+        JobState.MATCHING_METADATA.value,
+        JobState.TAGGING.value,
+        JobState.ORGANIZING.value,
+        JobState.VALIDATING.value,
+        JobState.QUEUED.value,
+    }:
+        return AcquisitionState.VALIDATING
+    if import_job.state in {JobState.IMPORTING.value, JobState.JELLYFIN_SCAN.value}:
+        return AcquisitionState.IMPORTING
     if import_job.state == JobState.NEEDS_REVIEW.value:
         return AcquisitionState.NEEDS_REVIEW
     if import_job.state == JobState.COMPLETE.value:
         return AcquisitionState.COMPLETE
     if import_job.state == JobState.FAILED.value:
-        return AcquisitionState.FAILED
+        return AcquisitionState.REJECTED
     if import_job.state == JobState.CANCELLED.value:
         return AcquisitionState.CANCELLED
     return None
@@ -463,6 +534,13 @@ def sync_acquisition_from_import(session: Session, acquisition: AcquisitionJob) 
     if import_job.kind != JobKind.ALBUM_IMPORT.value:
         raise AcquisitionError("Acquisition may only be linked to an album import job")
     target = _acquisition_target_for_import(import_job)
+    if acquisition.query_text is None and target in {
+        AcquisitionState.VALIDATING,
+        AcquisitionState.IMPORTING,
+    }:
+        target = AcquisitionState.IMPORT_STARTED
+    if acquisition.query_text is None and target is AcquisitionState.REJECTED:
+        target = AcquisitionState.FAILED
     if target is None or acquisition.state == target.value:
         return False
 
@@ -471,31 +549,38 @@ def sync_acquisition_from_import(session: Session, acquisition: AcquisitionJob) 
         AcquisitionState.QUEUED,
         AcquisitionState.WAITING_FOR_USER,
         AcquisitionState.WAITING_FOR_DOWNLOAD,
+        AcquisitionState.ACQUIRING,
     }:
-        transition_acquisition(
-            session,
-            acquisition,
-            AcquisitionState.FILE_RECEIVED,
-            "Associated download was received",
-        )
+        if acquisition.query_text is None:
+            transition_acquisition(session, acquisition, AcquisitionState.FILE_RECEIVED, "Associated download was received")
+        elif current is not AcquisitionState.ACQUIRING:
+            transition_acquisition(session, acquisition, AcquisitionState.ACQUIRING, "Associated download was received")
 
     messages = {
+        AcquisitionState.VALIDATING: "Validating acquired audio and metadata",
+        AcquisitionState.IMPORTING: "Validated request is importing",
         AcquisitionState.IMPORT_STARTED: "Associated import is processing",
         AcquisitionState.NEEDS_REVIEW: "Associated import needs review",
         AcquisitionState.COMPLETE: "Associated import completed",
+        AcquisitionState.REJECTED: "Acquired files failed validation",
         AcquisitionState.FAILED: "Associated import failed",
         AcquisitionState.CANCELLED: "Associated import was cancelled by the user",
     }
-    if target is AcquisitionState.FAILED:
+    if target in {AcquisitionState.REJECTED, AcquisitionState.FAILED}:
         acquisition.error_message = import_job.error_message or "Associated import failed"
     else:
         acquisition.error_message = None
+    if import_job.match_confidence is not None:
+        acquisition.confidence = import_job.match_confidence
+    if target is AcquisitionState.COMPLETE:
+        acquisition.final_library_location = import_job.output_relative_path
+        acquisition.required_action = None
     transition_acquisition(
         session,
         acquisition,
         target,
         messages[target],
-        level="ERROR" if target is AcquisitionState.FAILED else "INFO",
+        level="ERROR" if target in {AcquisitionState.REJECTED, AcquisitionState.FAILED} else "INFO",
     )
     return True
 

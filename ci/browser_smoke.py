@@ -69,22 +69,20 @@ def check():
                                 page.goto(BASE)
                                 page.screenshot(path=str(reports / f"{engine}-{width}.png"), full_page=True)
                                 page.get_by_role("navigation", name="Main navigation", exact=True).get_by_role("link", name="Add music", exact=True).click()
-                                page.get_by_label("Spotify URLs").fill("https://open.spotify.com/track/1234567890123456789012")
-                                page.get_by_role("button", name="Add all to queue", exact=True).click()
+                                page.get_by_label("Music requests").fill("https://open.spotify.com/track/1234567890123456789012")
+                                page.get_by_role("button", name="Request music", exact=True).click()
                                 page.wait_for_url("**/acquisitions?created=1")
                                 page.locator("tbody a").first.click()
                                 acquisition_url = page.url
-                                # Start the watched session through its CSRF-protected endpoint.
-                                # Clipboard permissions differ between browser engines.
-                                form = page.locator("form[data-copy-open-form]")
-                                token = form.locator('input[name="csrf_token"]').input_value()
-                                response = context.request.post(BASE + form.get_attribute("action"), form={"csrf_token": token})
-                                assert response.status == 200
+                                assert "REQUESTED" in page.locator("body").inner_text()
+                                # The resolver and real metadata services are intentionally
+                                # outside this browser-only gate. Exercise the contained
+                                # browser shell without bypassing the resolution state.
                                 page.goto(acquisition_url + "/browser")
                                 assert page.get_by_role("button", name="Downloader home", exact=True).is_visible()
                                 assert page.locator(".sidebar").count() == 0
                                 page.get_by_role("link", name="Back to request", exact=True).click()
-                                assert "WAITING FOR DOWNLOAD" in page.locator("body").inner_text()
+                                assert "REQUESTED" in page.locator("body").inner_text()
                                 page.get_by_role("button", name="Cancel request", exact=True).click()
                                 page.wait_for_load_state()
                                 assert "CANCELLED" in page.locator("body").inner_text()
@@ -100,7 +98,7 @@ def check():
                                 assert "QUEUED" in page.locator("body").inner_text()
                                 assert not errors, errors
                                 context.close()
-                                print(f"{engine} {width}px: navigation, queue/start/cancel, browser return and upload passed")
+                                print(f"{engine} {width}px: navigation, request/cancel, browser return and upload passed")
                         finally:
                             browser.close()
             finally:

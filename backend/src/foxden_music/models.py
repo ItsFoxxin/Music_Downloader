@@ -224,6 +224,18 @@ class AcquisitionJob(Base):
     display_title: Mapped[str] = mapped_column(String(500), nullable=False)
     artist: Mapped[str | None] = mapped_column(String(500))
     album: Mapped[str | None] = mapped_column(String(500))
+    parent_request_id: Mapped[str | None] = mapped_column(
+        ForeignKey("acquisition_jobs.id", ondelete="SET NULL"), index=True
+    )
+    query_text: Mapped[str | None] = mapped_column(Text)
+    manifest_json: Mapped[str | None] = mapped_column(Text)
+    validation_json: Mapped[str | None] = mapped_column(Text)
+    confidence: Mapped[float | None] = mapped_column(Float)
+    confidence_reasons_json: Mapped[str | None] = mapped_column(Text)
+    required_action: Mapped[str | None] = mapped_column(Text)
+    final_library_location: Mapped[str | None] = mapped_column(String(1500))
+    approved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    resolution_attempts: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     state: Mapped[str] = mapped_column(
         String(32), nullable=False, default=AcquisitionState.WAITING_FOR_USER.value, index=True
     )
@@ -255,6 +267,9 @@ class AcquisitionJob(Base):
         back_populates="acquisition_job",
         cascade="all, delete-orphan",
         order_by="AcquisitionArtifact.id",
+    )
+    parent_request: Mapped[AcquisitionJob | None] = relationship(
+        remote_side="AcquisitionJob.id", foreign_keys=[parent_request_id]
     )
 
 

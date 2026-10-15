@@ -36,6 +36,14 @@ x-environment: &foxden-environment
   SPOTIDOWNLOADER_URL: "${SPOTIDOWNLOADER_URL:-https://spotidownloader.com/}"
   SPOTIFY_BATCH_MAX_URLS: "${SPOTIFY_BATCH_MAX_URLS:-100}"
   SPOTIFY_BATCH_MAX_CHARACTERS: "${SPOTIFY_BATCH_MAX_CHARACTERS:-20000}"
+  MUSIC_REQUEST_PROVIDER: "${MUSIC_REQUEST_PROVIDER:-MANUAL_BROWSER}"
+  MUSIC_REQUEST_PROVIDER_URL: "${MUSIC_REQUEST_PROVIDER_URL:-}"
+  MUSIC_REQUEST_AUTO_IMPORT: "${MUSIC_REQUEST_AUTO_IMPORT:-false}"
+  MUSIC_REQUEST_HIGH_CONFIDENCE_THRESHOLD: "${MUSIC_REQUEST_HIGH_CONFIDENCE_THRESHOLD:-96}"
+  MUSIC_REQUEST_MIN_BITRATE: "${MUSIC_REQUEST_MIN_BITRATE:-128000}"
+  MUSIC_REQUEST_PREFERRED_SAMPLE_RATE: "${MUSIC_REQUEST_PREFERRED_SAMPLE_RATE:-44100}"
+  CHROMAPRINT_ENABLED: "${CHROMAPRINT_ENABLED:-false}"
+  ACOUSTID_BASE_URL: "${ACOUSTID_BASE_URL:-https://api.acoustid.org/v2/lookup}"
   DOWNLOAD_INBOX_DIR: "${DOWNLOAD_INBOX_DIR:-/downloads}"
   DOWNLOAD_INBOX_SETTLE_SECONDS: "${DOWNLOAD_INBOX_SETTLE_SECONDS:-30}"
   DOWNLOAD_INBOX_MIN_BYTES: "${DOWNLOAD_INBOX_MIN_BYTES:-1048576}"
@@ -47,7 +55,7 @@ x-environment: &foxden-environment
   REMOTE_BROWSER_URL: /server-browser/
 
 x-service: &foxden-service
-  image: fox-den-music:2.4.0
+  image: fox-den-music:2.5.0
   build: *foxden-build
   user: "${PUID:-10001}:${PGID:-10001}"
   init: true
@@ -146,6 +154,9 @@ services:
       JELLYFIN_API_KEY: "${JELLYFIN_API_KEY:-}"
       JELLYFIN_API_KEY_FILE: "${JELLYFIN_API_KEY:+/run/secrets/jellyfin_api_key}"
       JELLYFIN_TIMEOUT_SECONDS: "${JELLYFIN_TIMEOUT_SECONDS:-15}"
+      SPOTIFY_CLIENT_ID: "${SPOTIFY_CLIENT_ID:-}"
+      SPOTIFY_CLIENT_SECRET: "${SPOTIFY_CLIENT_SECRET:-}"
+      ACOUSTID_API_KEY: "${ACOUSTID_API_KEY:-}"
     secrets:
       - source: jellyfin_api_key
         target: jellyfin_api_key
@@ -192,9 +203,9 @@ services:
       TZ: "${TZ:-America/New_York}"
       KEEP_APP_RUNNING: "1"
       DARK_MODE: "1"
-      FF_OPEN_URL: "${SPOTIDOWNLOADER_URL:-https://spotidownloader.com/}"
+      FF_OPEN_URL: "${MUSIC_REQUEST_PROVIDER_URL:-}"
       FF_KIOSK: "${REMOTE_BROWSER_KIOSK:-0}"
-      FF_PREF_HOMEPAGE: 'browser.startup.homepage="${SPOTIDOWNLOADER_URL:-https://spotidownloader.com/}"'
+      FF_PREF_HOMEPAGE: 'browser.startup.homepage="${MUSIC_REQUEST_PROVIDER_URL:-}"'
       FF_PREF_STARTUP_PAGE: "browser.startup.page=1"
       FF_PREF_DISABLE_SESSION_RESTORE: "browser.sessionstore.resume_from_crash=false"
       FF_PREF_NEW_WINDOWS_AS_TABS: "browser.link.open_newwindow=3"

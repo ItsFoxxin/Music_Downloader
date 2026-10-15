@@ -9,9 +9,9 @@ import pytest
 
 from foxden_music.audio import AudioInspection, sha256_file
 from foxden_music.duplicates import assess_duplicates, normalized_track_identity, normalized_track_slot
-from foxden_music.enums import JellyfinState, JobState
+from foxden_music.enums import AcquisitionState, JellyfinState, JobState
 from foxden_music.metadata import NormalizedTrackMetadata, TagHints, serialize_hints
-from foxden_music.models import Job, LibraryTrack, ReleaseCandidate, Track
+from foxden_music.models import AcquisitionJob, Job, LibraryTrack, ReleaseCandidate, Track
 from foxden_music.pipeline import (
     ReviewRequired,
     RetryablePipelineError,
@@ -111,6 +111,56 @@ def test_synthetic_end_to_end_import_and_exact_duplicate_skip(
         assert second.skipped_count == 1
         assert second.imported_count == 0
         assert session.query(LibraryTrack).count() == 1
+
+
+def test_music_request_persists_validation_and_stops_before_publish(
+    settings, database, monkeypatch
+) -> None:
+    job_id = "10000000-0000-0000-0000-000000000003"
+    source = _queue_single_track(database, settings, job_id=job_id)
+    _mock_pipeline(monkeypatch, source)
+    manifest = {
+        "artist": "Stray Kids",
+        "release_id": "f21c2200-85ae-4aaa-94d9-e80079a1e705",
+        "album_edition": {"title": "ATE", "date": "2024-07-19"},
+        "expected_tracks": [{
+            "disc_number": 1,
+            "track_number": 1,
+            "title": "MOUNTAINS",
+            "artist": "Stray Kids",
+            "recording_id": "297dfc0d-5fec-7b20-1653-d1857ca4b580",
+        }],
+    }
+    with database.session() as session:
+        session.add(AcquisitionJob(
+            provider="MANUAL_BROWSER",
+            source_url="https://musicbrainz.org/release/f21c2200-85ae-4aaa-94d9-e80079a1e705",
+            source_type="RELEASE",
+            source_identifier="f21c2200-85ae-4aaa-94d9-e80079a1e705",
+            display_title="Stray Kids - ATE",
+            query_text="https://musicbrainz.org/release/f21c2200-85ae-4aaa-94d9-e80079a1e705",
+            manifest_json=json.dumps(manifest),
+            confidence=100,
+            confidence_reasons_json=json.dumps(["Exact MusicBrainz release link"]),
+            state=AcquisitionState.VALIDATING.value,
+            preferred_format="FLAC",
+            associated_import_job_id=job_id,
+            acquisition_relative_directory="acquisitions/request-gate",
+        ))
+
+    process_job(database, settings, job_id)
+
+    with database.session() as session:
+        job = session.get(Job, job_id)
+        request = session.query(AcquisitionJob).one()
+        evidence = json.loads(request.validation_json or "{}")
+        assert job is not None
+        assert job.state == JobState.NEEDS_REVIEW.value
+        assert job.review_kind == "REQUEST_AUTO_IMPORT"
+        assert evidence["metadata_matches"] is True
+        assert evidence["quality_matches"] is True
+        assert evidence["duplicates_clear"] is True
+        assert not any(path for path in settings.music_dir.iterdir() if path.name != ".imports")
 
 
 def test_processing_failure_never_creates_final_album(settings, database, monkeypatch) -> None:

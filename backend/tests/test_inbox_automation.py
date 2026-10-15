@@ -9,9 +9,10 @@ from sqlalchemy import select
 from foxden_music.acquisition import create_acquisition_batch, transition_acquisition
 from foxden_music.config import Settings
 from foxden_music.database import Database
-from foxden_music.enums import AcquisitionState, JobState
+from foxden_music.enums import AcquisitionProvider, AcquisitionState, JobState, PreferredFormat
 from foxden_music.inbox_automation import stage_next_waiting_download
 from foxden_music.models import AcquisitionArtifact, AcquisitionJob, Job
+from foxden_music.request_workflow import create_request_jobs, parse_request_reference
 
 
 ALBUM_URL = "https://open.spotify.com/album/4aawyAB9vmqN3uQ7FjRGTy"
@@ -91,3 +92,37 @@ def test_download_older_than_watched_request_is_not_claimed(
         acquisition = session.get(AcquisitionJob, acquisition_id)
         assert acquisition is not None
         assert acquisition.state == AcquisitionState.WAITING_FOR_DOWNLOAD.value
+
+
+def test_browser_download_is_routed_through_request_private_directory(
+    settings: Settings, tmp_path: Path
+) -> None:
+    configured, database, inbox = configured_database(settings, tmp_path)
+    with database.session() as session:
+        acquisition = create_request_jobs(
+            session,
+            [parse_request_reference("Fox Artist - Night Run")],
+            preferred_format=PreferredFormat.FLAC,
+            provider=AcquisitionProvider.MANUAL_BROWSER,
+        )[0]
+        transition_acquisition(session, acquisition, AcquisitionState.RESOLVING, "Resolving")
+        transition_acquisition(
+            session, acquisition, AcquisitionState.WAITING_FOR_USER, "Resolved"
+        )
+        transition_acquisition(session, acquisition, AcquisitionState.ACQUIRING, "Contained browser opened")
+        acquisition_id = acquisition.id
+    downloaded = inbox / "album.zip"
+    downloaded.write_bytes(b"completed-download")
+
+    job_id = stage_next_waiting_download(database, configured)
+
+    assert job_id is not None
+    assert not downloaded.exists()
+    assert (inbox / acquisition_id).is_dir()
+    with database.session() as session:
+        acquisition = session.get(AcquisitionJob, acquisition_id)
+        job = session.get(Job, job_id)
+        assert acquisition is not None
+        assert acquisition.state == AcquisitionState.VALIDATING.value
+        assert job is not None
+        assert job.source_reference == f"request:{acquisition_id}:album.zip"

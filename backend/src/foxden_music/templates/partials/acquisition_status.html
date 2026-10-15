@@ -10,6 +10,7 @@
   {% endfor %}
 </ol>
 {% if acquisition.required_action %}<div class="notice"><strong>User action:</strong> {{ acquisition.required_action }}</div>{% endif %}
+{% if state == 'CANCELLED' %}<p class="muted">This request was cancelled before handoff.</p>{% endif %}
 {% if acquisition.error_message %}<div class="form-error" role="alert"><strong>{{ state|replace('_', ' ')|title }}</strong><span>{{ acquisition.error_message }}</span></div>{% endif %}
 {% if timeline_events %}
 <details class="event-details"><summary>Full event timeline</summary><ol class="timeline">

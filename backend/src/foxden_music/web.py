@@ -438,13 +438,17 @@ def _library_metrics(session: Session) -> dict[str, int | float]:
 
 
 def _acquisition_state_expression() -> Any:
+    active_import_state = case(
+        (AcquisitionJob.query_text.is_not(None), AcquisitionState.VALIDATING.value),
+        else_=AcquisitionState.IMPORT_STARTED.value,
+    )
     return case(
         (Job.state == JobState.COMPLETE.value, AcquisitionState.COMPLETE.value),
         (Job.state == JobState.FAILED.value, AcquisitionState.REJECTED.value),
         (Job.state == JobState.CANCELLED.value, AcquisitionState.CANCELLED.value),
         (Job.state == JobState.NEEDS_REVIEW.value, AcquisitionState.NEEDS_REVIEW.value),
         (Job.state.in_((JobState.IMPORTING.value, JobState.JELLYFIN_SCAN.value)), AcquisitionState.IMPORTING.value),
-        (Job.state.in_(tuple(state.value for state in ACTIVE_JOB_STATES) + (JobState.QUEUED.value,)), AcquisitionState.VALIDATING.value),
+        (Job.state.in_(tuple(state.value for state in ACTIVE_JOB_STATES) + (JobState.QUEUED.value,)), active_import_state),
         else_=AcquisitionJob.state,
     )
 

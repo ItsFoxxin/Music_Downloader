@@ -264,6 +264,7 @@ ALLOWED_ACQUISITION_TRANSITIONS: dict[AcquisitionState, frozenset[AcquisitionSta
     AcquisitionState.ACQUIRING: frozenset(
         {
             AcquisitionState.WAITING_FOR_USER,
+            AcquisitionState.WAITING_FOR_DOWNLOAD,
             AcquisitionState.VALIDATING,
             AcquisitionState.FILE_RECEIVED,
             AcquisitionState.REJECTED,
@@ -308,6 +309,7 @@ ALLOWED_ACQUISITION_TRANSITIONS: dict[AcquisitionState, frozenset[AcquisitionSta
             AcquisitionState.VALIDATING,
             AcquisitionState.WAITING_FOR_DOWNLOAD,
             AcquisitionState.FILE_RECEIVED,
+            AcquisitionState.IMPORT_STARTED,
             AcquisitionState.FAILED,
             AcquisitionState.CANCELLED,
         }

@@ -93,6 +93,36 @@ def test_import_claim_ignores_legacy_acquisition_kind(database) -> None:
         assert session.get(Job, album_id).state == JobState.STAGING.value
 
 
+def test_schema_two_adds_music_request_columns(settings) -> None:
+    settings.ensure_directories()
+    database = Database(settings)
+    with database.engine.begin() as connection:
+        connection.execute(text("CREATE TABLE database_metadata (key VARCHAR(100) PRIMARY KEY, value TEXT NOT NULL)"))
+        connection.execute(text("INSERT INTO database_metadata (key, value) VALUES ('schema_version', '2')"))
+        connection.execute(text("CREATE TABLE acquisition_jobs (id VARCHAR(36) PRIMARY KEY)"))
+
+    database.initialize()
+
+    expected = {
+        "parent_request_id",
+        "query_text",
+        "manifest_json",
+        "validation_json",
+        "confidence",
+        "confidence_reasons_json",
+        "required_action",
+        "final_library_location",
+        "approved_at",
+        "resolution_attempts",
+    }
+    with database.engine.connect() as connection:
+        columns = {column["name"] for column in inspect(connection).get_columns("acquisition_jobs")}
+        assert expected <= columns
+        assert connection.scalar(
+            text("SELECT value FROM database_metadata WHERE key = 'schema_version'")
+        ) == SCHEMA_VERSION
+
+
 def test_future_schema_version_fails_closed(settings) -> None:
     database = Database(settings)
     database.initialize()

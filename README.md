@@ -1,5 +1,46 @@
 # Fox Den Music
 
+## GitHub CI: development and release gates
+
+Pushes and PRs to `dev` run sequential validation, regression tests, wheel
+packaging, and a real container build/startup smoke test. PRs to `main` add real-audio imports, a Python version
+matrix, a 78% coverage floor, desktop/mobile browser checks, and a dependency
+vulnerability audit. CI does not deploy to the NAS.
+
+See [CI layers and required GitHub branch settings](docs/ci.md). Workflows report
+results; branch protection must require **Dev gate** / **Main gate** to block
+unsafe merges.
+
+## v2.5.0 · Automated music-request workflow
+
+Fox Den Music now accepts artist/song and artist/album names, artist requests,
+Spotify track/album/playlist links, and MusicBrainz recording/release links.
+Requests move through `REQUESTED → RESOLVING → ACQUIRING → VALIDATING →
+NEEDS_REVIEW / IMPORTING → COMPLETE`. Resolution produces a persisted,
+MusicBrainz-based manifest before acquisition begins. Spotify playlists are
+expanded into independent child track requests so one failure does not discard
+successful items.
+
+Acquisition is adapter-backed. `MANUAL_BROWSER` opens a configured HTTPS
+provider for login, CAPTCHA, or ambiguous human choices; `FILESYSTEM_DROP`
+watches `/downloads/<request-id>`. Both feed the existing secure importer, and
+neither writes directly to the final library. Automatic importing is disabled
+by default. Optional Chromaprint/AcoustID evidence can be enabled when `fpcalc`
+is installed.
+
+See [v2.5.0 release notes and manual test](docs/request-workflow-v2.5.0.md).
+
+## v2.4.0 · A shared Fox Den workspace
+
+The music UI now matches the layout and visual language of
+[Fox Den Media on dev](https://github.com/ItsFoxxin/Media_Downloader/tree/230dd7c):
+a desktop sidebar, touch-friendly mobile navigation, charcoal panels, peach
+actions, and a green download-to-library workflow. Upload, tagging, queue,
+library scanning, and remote-browser behavior are unchanged. No new accounts,
+API keys, or environment variables are required.
+
+See [release notes, deployment, and manual checks](docs/ui-v2.4.0.md).
+
 Fox Den Music is a self-hosted, security-focused music-management service for a
 Jellyfin library. Stage 2 adds a live dashboard, a read-only index of the real
 music collection, artist/album/health views, a persistent Spotify acquisition
@@ -12,9 +53,9 @@ inspects it, matches MusicBrainz releases, pauses for ambiguous metadata, tags
 a working copy, checks duplicates, assembles a complete album, and publishes it
 with one no-overwrite atomic rename.
 
-Stage 2 does **not** automate a browser, CAPTCHA, download, or private provider
-endpoint. It does not circumvent DRM or access controls. The user downloads
-normally in their own browser and uploads the result to the acquisition job.
+Fox Den Music does **not** bypass CAPTCHAs, login controls, DRM, or provider
+access controls. A provider that requires human interaction pauses in
+`WAITING_FOR_USER` and exposes the contained browser.
 
 ## Architecture
 
@@ -33,9 +74,10 @@ The project continues to use one image and two ordinary processes:
   one worker are intentional.
 - `/staging/jobs/<import-job-id>`: immutable incoming source plus generated
   extraction and working areas.
-- `/staging/acquisitions/<acquisition-id>/incoming`: reserved Stage 3 handoff
-  location. Stage 2 creates it but does not watch it; use the acquisition upload
-  form.
+- `/staging/acquisitions/<request-id>`: request-specific metadata, incoming,
+  and download handoff area.
+- `/downloads/<request-id>`: isolated provider output for the filesystem-drop
+  adapter. Partial browser files and unsupported types are never handed off.
 - `/music/.imports/<import-job-id>/album`: complete pre-publish album.
 - `/music/<Album Artist>/<Album> (<Year>)`: final library destination.
 
@@ -159,7 +201,8 @@ This rollback preserves both copies and deletes nothing.
    - set `PUID`, `PGID`, and the three host paths;
    - set `MUSICBRAINZ_CONTACT` to a real contact email or HTTPS URL;
    - optionally set `JELLYFIN_URL` and `JELLYFIN_API_KEY`;
-   - set `REMOTE_BROWSER_URL` to the externally reachable browser address;
+   - the browser now uses `/server-browser/` on the same server IP and web port;
+     Compose supplies this automatically, including when `.env` contains an old IP;
      keep `REMOTE_BROWSER_KIOSK=0` so downloader popups remain reachable as tabs;
    - keep `WEB_BIND_IP=127.0.0.1` behind a local reverse proxy, or set one
      specific LAN address for direct LAN access;
@@ -208,7 +251,8 @@ values. Never paste API keys into the web UI or commit the populated file.
 | `STAGING_PATH` | `./data/staging` | Uploads, acquisition roots, extraction, and working copies |
 | `MUSIC_PATH` | `./data/music` | Final Jellyfin music library; worker only |
 | `DOWNLOAD_INBOX_PATH` / `DOWNLOAD_INBOX_DIR` | `./data/download-inbox` / `/downloads` | Shared host folder and container path for completed browser downloads |
-| `REMOTE_BROWSER_URL` | blank | Externally reachable URL for the human-controlled server browser |
+| `DOWNLOAD_INBOX_AUTO_IMPORT` | `true` | Watch for the settled file created after a request starts downloading, attach it to that request, and queue its import automatically |
+| `REMOTE_BROWSER_URL` | `/server-browser/` in Compose | Browser path through the gateway; old `.env` addresses are ignored by Compose |
 | `REMOTE_BROWSER_BIND_IP` / `REMOTE_BROWSER_PORT` | `127.0.0.1` / `5800` | Published server-browser address |
 | `REMOTE_BROWSER_KIOSK` | `0` | Keep Firefox tabs visible for downloader popups; Compose forces popup windows into tabs, sets `SPOTIDOWNLOADER_URL` as the homepage, and disables session restoration |
 | `WEB_BIND_IP` / `WEB_PORT` | `127.0.0.1` / `8000` | The only published service port |

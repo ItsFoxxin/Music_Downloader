@@ -29,6 +29,7 @@ class SourceType(StrEnum):
     UPLOAD = "UPLOAD"
     INCOMING = "INCOMING"
     SPOTIFY = "SPOTIFY"
+    MUSIC_REQUEST = "MUSIC_REQUEST"
 
 
 class JellyfinState(StrEnum):
@@ -47,15 +48,25 @@ class DuplicateStatus(StrEnum):
 
 class AcquisitionProvider(StrEnum):
     SPOTIDOWNLOADER_MANUAL = "SPOTIDOWNLOADER_MANUAL"
+    MANUAL_BROWSER = "MANUAL_BROWSER"
+    FILESYSTEM_DROP = "FILESYSTEM_DROP"
 
 
 class AcquisitionSourceType(StrEnum):
     TRACK = "TRACK"
     ALBUM = "ALBUM"
     PLAYLIST = "PLAYLIST"
+    ARTIST = "ARTIST"
+    RECORDING = "RECORDING"
+    RELEASE = "RELEASE"
 
 
 class AcquisitionState(StrEnum):
+    REQUESTED = "REQUESTED"
+    RESOLVING = "RESOLVING"
+    ACQUIRING = "ACQUIRING"
+    VALIDATING = "VALIDATING"
+    IMPORTING = "IMPORTING"
     QUEUED = "QUEUED"
     WAITING_FOR_USER = "WAITING_FOR_USER"
     WAITING_FOR_DOWNLOAD = "WAITING_FOR_DOWNLOAD"
@@ -63,6 +74,7 @@ class AcquisitionState(StrEnum):
     IMPORT_STARTED = "IMPORT_STARTED"
     NEEDS_REVIEW = "NEEDS_REVIEW"
     COMPLETE = "COMPLETE"
+    REJECTED = "REJECTED"
     FAILED = "FAILED"
     CANCELLED = "CANCELLED"
 

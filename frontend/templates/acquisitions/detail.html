@@ -2,21 +2,41 @@
 {% block title %}{{ acquisition.display_title }} · {{ app_name }}{% endblock %}
 {% block content %}
 <section class="page-heading split">
-  <div><p class="eyebrow">{{ acquisition.source_type|title }} acquisition</p><h1>{{ acquisition.display_title }}</h1><p class="mono">{{ acquisition.id }}</p></div>
+  <div><p class="eyebrow">{{ acquisition.source_type|title }} request</p><h1>{{ acquisition.display_title }}</h1><p class="mono">{{ acquisition.id }}</p></div>
   <span class="status large status-{{ effective_state|lower }}" role="status">{{ effective_state|replace('_', ' ') }}</span>
 </section>
 
 <div class="detail-grid acquisition-layout">
   <div>
     <section class="panel provider-panel" aria-labelledby="provider-heading">
-      <p class="eyebrow">Human-assisted download</p><h2 id="provider-heading">Get the requested file</h2>
-      <ol class="instruction-list"><li>Use the button below to copy the validated Spotify URL and open the server browser.</li><li>On a phone, open the server browser's left-side three-dot panel and paste into its clipboard box. Then paste into SpotiDownloader and complete any prompts or CAPTCHA yourself. Downloader popups open as visible tabs.</li><li>Save the ZIP or audio file to the browser's <code>/downloads</code> folder, then import it from the server inbox.</li></ol>
-      <label for="source-url"><strong>Spotify URL</strong></label>
+      <p class="eyebrow">Acquisition provider</p><h2 id="provider-heading">Get the resolved music</h2>
+      {% if acquisition.required_action %}<div class="notice"><strong>Action required:</strong> {{ acquisition.required_action }}</div>{% endif %}
+      <ol class="instruction-list"><li>Review the canonical manifest before acquiring files.</li><li>If the provider needs a login, CAPTCHA, or choice, complete it yourself in the contained browser. Fox Den never bypasses those controls.</li><li>Save only the completed ZIP or audio file. Partial browser files are ignored.</li></ol>
+      <label for="source-url"><strong>Request source</strong></label>
       <div class="copy-row"><input id="source-url" type="text" value="{{ acquisition.source_url }}" readonly><button class="button" type="button" data-copy-target="source-url">Copy URL</button></div>
       <p class="copy-feedback" data-copy-feedback role="status" aria-live="polite"></p>
-      {% if remote_browser_url %}
-      <a class="button primary" href="{{ remote_browser_url }}" rel="external" data-copy-open-target="source-url">Copy URL &amp; open downloader</a>
+      {% if acquisition.state == 'WAITING_FOR_USER' and manifest %}
+      <form action="/acquisitions/{{ acquisition.id }}/confirm-resolution" method="post">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <button class="button" type="submit">Confirm resolved metadata</button>
+      </form>
+      {% endif %}
+      {% if acquisition.state == 'WAITING_FOR_USER' %}
+      <form class="form-stack" action="/acquisitions/{{ acquisition.id }}/replace-reference" method="post">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <label for="reference-url"><strong>Use an exact MusicBrainz match</strong><span>Paste a recording or release link when search is ambiguous or returns nothing.</span></label>
+        <input id="reference-url" name="reference_url" type="url" inputmode="url" placeholder="https://musicbrainz.org/release/..." required>
+        <button class="button" type="submit">Resolve this exact match</button>
+      </form>
+      {% endif %}
+      {% if remote_browser_url and automatic_inbox_enabled and acquisition.state in ['WAITING_FOR_USER', 'ACQUIRING', 'WAITING_FOR_DOWNLOAD'] %}
+      <form action="/acquisitions/{{ acquisition.id }}/begin-download" method="post" data-copy-open-form data-copy-target="source-url" data-browser-url="/acquisitions/{{ acquisition.id }}/browser">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <button class="button primary" type="submit" data-copy-open-submit>Copy URL &amp; start watched download</button>
+      </form>
       <p class="muted fine-print">The server browser opens directly on <code>{{ provider_url }}</code>. Its left-side three-dot panel contains the clipboard bridge for moving the copied URL into remote Firefox.</p>
+      {% elif remote_browser_url %}
+      <a class="button primary" href="{{ remote_browser_url }}" rel="external">Open downloader in server browser</a>
       {% else %}
       <a class="button primary" href="{{ provider_url }}" rel="external">Open SpotiDownloader</a>
       {% endif %}
@@ -35,17 +55,55 @@
     <section class="panel key-values">
       <h2>Request details</h2>
       <dl>
-        <div><dt>Provider</dt><dd>SpotiDownloader (manual)</dd></div>
+        <div><dt>Provider</dt><dd>{{ acquisition.provider|replace('_', ' ')|title }}</dd></div>
         <div><dt>Source</dt><dd>{{ acquisition.source_type|title }}</dd></div>
         <div><dt>Format</dt><dd>{{ acquisition.preferred_format|replace('_', ' ') }}</dd></div>
         <div><dt>Created</dt><dd>{{ acquisition.created_at|datetime }}</dd></div>
         <div><dt>File</dt><dd>{{ acquisition.artifacts[0].display_filename if acquisition.artifacts else 'Waiting' }}</dd></div>
+        <div><dt>Confidence</dt><dd>{{ '%.1f%%'|format(acquisition.confidence) if acquisition.confidence is not none else 'Pending' }}</dd></div>
+        <div><dt>Auto import</dt><dd>{{ 'Enabled' if auto_import_enabled else 'Disabled by default' }}</dd></div>
+        <div><dt>Library location</dt><dd>{{ acquisition.final_library_location or 'Pending' }}</dd></div>
       </dl>
     </section>
-    {% if not acquisition.associated_import_job_id and acquisition.state in ['QUEUED', 'WAITING_FOR_USER', 'WAITING_FOR_DOWNLOAD'] %}
+    {% if manifest %}
+    <section class="panel key-values">
+      <p class="eyebrow">Canonical manifest</p><h2>Resolved metadata</h2>
+      <dl>
+        <div><dt>Artist</dt><dd>{{ manifest.artist or 'Unknown' }}</dd></div>
+        <div><dt>Release ID</dt><dd class="mono">{{ manifest.release_id or 'Recording only' }}</dd></div>
+        <div><dt>Recording ID</dt><dd class="mono">{{ manifest.recording_id or 'Album request' }}</dd></div>
+        <div><dt>Edition</dt><dd>{{ manifest.album_edition.title if manifest.album_edition else 'Needs selection' }}</dd></div>
+        <div><dt>Expected tracks</dt><dd>{{ manifest.expected_tracks|length }}</dd></div>
+      </dl>
+      {% if confidence_reasons %}<ul>{% for reason in confidence_reasons %}<li>{{ reason }}</li>{% endfor %}</ul>{% endif %}
+      {% if manifest.expected_tracks %}<details><summary>Expected track list</summary><ol>{% for track in manifest.expected_tracks %}<li>{{ track.disc_number }}.{{ track.track_number }} · {{ track.title }}{% if track.duration_seconds %} · {{ track.duration_seconds|round(1) }}s{% endif %}</li>{% endfor %}</ol></details>{% endif %}
+    </section>
+    {% endif %}
+    {% if validation %}
+    <section class="panel key-values">
+      <p class="eyebrow">Validation evidence</p><h2>{{ 'Passed' if validation.readable_audio and validation.archive_and_types_safe else 'Review required' }}</h2>
+      <dl>
+        <div><dt>Readable audio</dt><dd>{{ 'Yes' if validation.readable_audio else 'No' }}</dd></div>
+        <div><dt>Safe archive/types</dt><dd>{{ 'Yes' if validation.archive_and_types_safe else 'No' }}</dd></div>
+        <div><dt>Track count</dt><dd>{{ 'Matches' if validation.track_count_matches else 'Mismatch' }}</dd></div>
+        <div><dt>Metadata</dt><dd>{{ 'Matches manifest' if validation.metadata_matches else 'Mismatch' }}</dd></div>
+        <div><dt>Audio quality</dt><dd>{{ 'Meets policy' if validation.quality_matches else 'Review required' }}</dd></div>
+        <div><dt>Duplicates</dt><dd>{{ 'Clear' if validation.duplicates_clear else 'Conflict' }}</dd></div>
+        <div><dt>Chromaprint</dt><dd>{{ validation.chromaprint|replace('_', ' ')|title }}</dd></div>
+      </dl>
+    </section>
+    {% endif %}
+    {% if acquisition.state == 'NEEDS_REVIEW' and acquisition.import_job and acquisition.import_job.review_kind == 'REQUEST_AUTO_IMPORT' %}
+    <form class="panel form-stack" action="/acquisitions/{{ acquisition.id }}/approve-import" method="post">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <div><p class="eyebrow">Import approval</p><h2>Validation stopped before the library</h2><p class="muted">Approval reruns validation, then allows the existing atomic importer to publish the album.</p></div>
+      <button class="button primary" type="submit">Approve atomic import</button>
+    </form>
+    {% endif %}
+    {% if not acquisition.associated_import_job_id and acquisition.state in ['QUEUED', 'WAITING_FOR_USER', 'WAITING_FOR_DOWNLOAD', 'ACQUIRING'] %}
     <form class="panel form-stack" action="/acquisitions/{{ acquisition.id }}/upload" method="post" enctype="multipart/form-data" data-upload-form data-max-upload-bytes="{{ max_upload_bytes }}">
       <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-      <div><p class="eyebrow">Handoff</p><h2>Upload download</h2><p class="muted">For an album, choose the downloaded ZIP. A loose audio file is treated as a one-track release.</p></div>
+      <div><p class="eyebrow">Fallback handoff</p><h2>Upload download manually</h2><p class="muted">Normally the server inbox detects the browser download automatically. Use this only for a file downloaded on another device. A loose audio file is treated as a one-track release.</p></div>
       <label for="acquisition-file"><strong>Album ZIP or one audio file</strong><span>Maximum {{ max_upload_bytes|filesize }}</span></label>
       <input id="acquisition-file" type="file" name="album" accept=".zip,.flac,.mp3,.m4a,.aac,.opus,.ogg,.oga" required data-upload-file>
       <p class="upload-selection" data-upload-selection aria-live="polite">No file selected.</p>
@@ -61,7 +119,7 @@
       <button class="button" type="submit">Cancel request</button>
     </form>
     {% elif acquisition.state == 'CANCELLED' and not acquisition.associated_import_job_id %}
-    <section class="panel danger-panel"><p class="eyebrow">Cancelled</p><h2>Import was not started</h2><p class="muted">The request is preserved in history. No staging or music files were removed.</p></section>
+    <section class="panel danger-panel"><p class="eyebrow">Request cancelled</p><h2>Import was not started</h2><p class="muted">The request was cancelled before handoff and is preserved in history. No staging or music files were removed.</p></section>
     {% elif acquisition.import_job %}
     <section class="panel"><p class="eyebrow">Linked import</p><h2>Stage 1 is in control</h2><p>{{ acquisition.import_job.track_count }} track{{ '' if acquisition.import_job.track_count == 1 else 's' }} inspected so far.</p><a class="button" href="/jobs/{{ acquisition.import_job.id }}">Open import details</a></section>
     {% endif %}

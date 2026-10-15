@@ -13,6 +13,7 @@ from .config import get_settings
 from .database import Database
 from .enums import JellyfinState, JobState
 from .healthcheck import write_worker_heartbeat
+from .inbox_automation import stage_next_waiting_download
 from .inventory import (
     claim_next_scan,
     ensure_initial_or_scheduled_scan,
@@ -23,6 +24,7 @@ from .inventory import (
 from .logging_config import configure_logging
 from .models import AcquisitionJob, Job
 from .pipeline import process_job, retry_jellyfin_refresh
+from .request_workflow import resolve_next_request
 from .state import claim_next_job, recover_interrupted_jobs
 
 
@@ -81,6 +83,25 @@ def worker_loop(*, once: bool = False) -> int:
     logger.info("Worker started")
     try:
         while not stop_event.is_set():
+            resolved_request_id: str | None = None
+            try:
+                resolved_request_id = resolve_next_request(database, settings)
+                if resolved_request_id:
+                    logger.info(
+                        "Advanced a music request",
+                        extra={"acquisition_id": resolved_request_id},
+                    )
+            except Exception:
+                logger.exception("Music request resolution failed")
+            try:
+                inbox_job_id = stage_next_waiting_download(database, settings)
+                if inbox_job_id:
+                    logger.info(
+                        "Automatically staged a completed server download",
+                        extra={"job_id": inbox_job_id},
+                    )
+            except Exception:
+                logger.exception("Automatic server-download handoff failed")
             job_id: str | None
             with database.session() as session:
                 job_id = claim_next_job(session)
@@ -116,7 +137,7 @@ def worker_loop(*, once: bool = False) -> int:
                 retry_jellyfin_refresh(database, settings, retry_id)
 
             scan_id: str | None = None
-            if not job_id and not retry_id:
+            if not resolved_request_id and not job_id and not retry_id:
                 ensure_initial_or_scheduled_scan(database, settings)
                 with database.session() as session:
                     scan_id = claim_next_scan(session)
@@ -134,13 +155,13 @@ def worker_loop(*, once: bool = False) -> int:
                 and monotonic() - last_storage_refresh
                 >= settings.storage_snapshot_interval_seconds
             )
-            if not job_id and not retry_id and not scan_id and storage_due:
+            if not resolved_request_id and not job_id and not retry_id and not scan_id and storage_due:
                 refresh_storage_snapshot(database, settings)
                 last_storage_refresh = monotonic()
             write_worker_heartbeat()
             if once:
                 return 0
-            if not job_id and not retry_id and not scan_id:
+            if not resolved_request_id and not job_id and not retry_id and not scan_id:
                 stop_event.wait(settings.worker_poll_seconds)
     finally:
         stop_event.set()

@@ -140,6 +140,13 @@ def test_path_overlap_refused(tmp_path):
     with pytest.raises(ValueError,match='non-overlapping'):s.prepare()
 
 
+@pytest.mark.parametrize('url',['http://example.com/','https://user:pass@example.com/','file:///tmp/search'])
+def test_media_browser_home_requires_safe_https(tmp_path, url):
+    s=Settings(config=tmp_path/'config',staging=tmp_path/'staging',media=tmp_path/'media',
+               token='x'*32,media_browser_home_url=url)
+    with pytest.raises(ValueError,match='MEDIA_BROWSER_HOME_URL'):s.prepare()
+
+
 def test_restart_marks_running_job_interrupted(settings):
     store=Store(settings.config/'restart.db')
     job=store.enqueue('validate',{'source':'gone.mp4'})
@@ -298,3 +305,24 @@ def test_request_input_rejects_unsafe_scheme(settings):
         response=client.post('/api/requests',headers=headers,
                              json={'query':'file:///etc/passwd','media_type':'TV'})
         assert response.status_code==400
+
+
+def test_request_browser_handoff_is_authenticated_and_escaped(settings):
+    settings.media_browser_home_url='https://www.themoviedb.org/'
+    app=create_app(settings,start_worker=False)
+    headers={'Authorization':'Bearer '+settings.token}
+    with TestClient(app) as client:
+        created=client.post('/api/requests',headers=headers,
+                            json={'query':'Example Movie','media_type':'Movie',
+                                  'title':'<script>alert(1)</script>'}).json()
+        path=f"/request-browser/{created['id']}"
+        assert client.get(path).status_code==401
+        response=client.get(path,headers=headers)
+        assert response.status_code==200
+        assert '<script>alert(1)</script>' not in response.text
+        assert '&lt;script&gt;alert(1)&lt;/script&gt;' in response.text
+        assert 'src="/server-browser/"' in response.text
+        assert 'https://www.themoviedb.org/' in response.text
+        assert client.get(f"/api/requests/{created['id']}",headers=headers).json()['id']==created['id']
+        assert client.get('/assets/request-browser.js').status_code==200
+        assert client.get('/assets/request-browser-bridge.js').status_code==200

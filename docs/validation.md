@@ -1,5 +1,16 @@
 # Validation evidence
 
+## Guided Movie/TV browser 0.4.0 - 2026-10-15
+
+- Media suite: **40 passed, 1 skipped** locally on Windows. The skip requires
+  symlink privileges unavailable to this account.
+- Tests cover authenticated handoff access, HTML escaping, request lookup,
+  HTTPS-only discovery-home configuration, and all request/import behavior from
+  0.3.0.
+- Python compilation and all three media JavaScript files passed syntax checks.
+- Docker is unavailable locally; Compose, gateway routing, image builds, and the
+  running handoff page remain CI checks for this commit.
+
 ## Request workflow 0.3.0 - 2026-10-15
 
 - Media workflow suite: **36 passed, 1 skipped** on Windows. The skipped case

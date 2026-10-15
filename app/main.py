@@ -1,6 +1,7 @@
 from contextlib import asynccontextmanager
 from pathlib import Path
 import base64
+import html
 import hmac
 import hashlib
 import os
@@ -10,7 +11,7 @@ import time
 from urllib.parse import parse_qs, unquote_plus, urlsplit
 
 from fastapi import Depends, FastAPI, HTTPException, Request
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
@@ -162,6 +163,39 @@ def create_app(settings=None, *, start_worker=True, qbit=None):
 
     app.mount("/assets", StaticFiles(directory=assets), name="assets")
 
+    @app.get("/request-browser/{request_id}", dependencies=[Depends(auth)], response_class=HTMLResponse)
+    def request_browser(request_id: str):
+        media_request = store.media_request(request_id)
+        if not media_request:
+            raise HTTPException(404, "Request not found")
+        title = html.escape(media_request["title"], quote=True)
+        media_type = html.escape(media_request["media_type"], quote=True)
+        home = html.escape(s.media_browser_home_url, quote=True)
+        qbit_link = ""
+        if s.qbit_public_url and not s.demo:
+            public_url = html.escape(s.qbit_public_url, quote=True)
+            qbit_link = (f'<a class="browser-button" href="{public_url}" target="_blank" '
+                         'rel="noopener noreferrer">Open qBittorrent ↗</a>')
+        return HTMLResponse(f"""<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>{title} · Fox Den request browser</title>
+<link rel="stylesheet" href="../assets/request-browser.css">
+<script src="../assets/request-browser.js" defer></script></head>
+<body data-home-url="{home}"><header class="browser-toolbar">
+<a class="browser-button primary" href="../?view=requests">← Back to requests</a>
+<button class="browser-button" type="button" data-browser-home
+ data-bridge-url="../assets/request-browser-bridge.js" disabled>Media discovery home</button>
+<button class="browser-button" type="button" data-copy-request>Copy request</button>
+{qbit_link}<input id="browser-request" type="text" value="{title}" readonly
+ aria-label="{media_type} request"></header>
+<div class="browser-help"><b>{media_type} request:</b> {title}. Search in the visible browser,
+complete any login or CAPTCHA yourself, add your chosen result to qBittorrent, then return and attach it.
+<span data-browser-feedback role="status" aria-live="polite"></span></div>
+<iframe class="browser-frame" src="/server-browser/" data-home-url="{home}"
+ title="Contained media browser" referrerpolicy="no-referrer"
+ allow="fullscreen; clipboard-read; clipboard-write" allowfullscreen></iframe></body></html>""")
+
     @app.get("/api/status", dependencies=[Depends(auth)])
     def status():
         usage = shutil.disk_usage(s.media)
@@ -205,6 +239,13 @@ def create_app(settings=None, *, start_worker=True, qbit=None):
     @app.get("/api/requests", dependencies=[Depends(auth)])
     def media_requests():
         return store.media_requests()
+
+    @app.get("/api/requests/{request_id}", dependencies=[Depends(auth)])
+    def media_request(request_id: str):
+        result = store.media_request(request_id)
+        if not result:
+            raise HTTPException(404, "Request not found")
+        return result
 
     @app.post("/api/requests", dependencies=[Depends(auth)], status_code=202)
     def create_media_request(body: MediaRequestCreate):

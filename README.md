@@ -1,6 +1,6 @@
 # Fox Den Media
 
-Current development release: **0.3.0**. See [CHANGELOG.md](CHANGELOG.md).
+Current development release: **0.4.0**. See [CHANGELOG.md](CHANGELOG.md).
 
 One self-hosted Docker project for **music, movies, and TV**. The existing Fox Den
 Music downloader lives alongside a new qBittorrent dashboard and a reviewed,
@@ -15,6 +15,8 @@ verified staging-to-library workflow. One gateway and one login connect both.
 - Durable Movie/TV request inbox accepting titles, metadata links, and magnets.
   Attached downloads advance automatically through completion and validation,
   then pause for the existing reviewed import.
+- Authenticated guided-browser handoff for Movie/TV requests, reusing the
+  contained Firefox service without granting it torrent staging or media access.
 - Read-only staging browser and durable SQLite jobs for validation and imports.
 - FFprobe inspection, full audio/video decoding with FFmpeg (default), file
   stability/size checks, SHA-256 checksums, and explicit excluded-file reports.
@@ -97,6 +99,12 @@ requests start in qBittorrent immediately. For a title or metadata link, add the
 matching download in qBittorrent and attach it to the request. Fox Den then
 tracks download completion and queues validation automatically. See the
 [request workflow](docs/requests.md) for states and safety boundaries.
+
+For a title or metadata-link request, **Guided browser** opens the same contained
+Firefox/noVNC service used by Music. It can copy the request and navigate to the
+configured HTTPS discovery page. You complete searches, login, consent, and any
+CAPTCHA visibly, add the selected result to qBittorrent, then attach it to the
+request. Fox Den does not automate browser challenges or torrent selection.
 
 1. Download through qBittorrent. Use its Web UI or submit a magnet in Fox Den.
 2. In **Downloads**, choose **Validate** on a completed torrent. Fox Den verifies

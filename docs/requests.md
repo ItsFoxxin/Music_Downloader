@@ -30,3 +30,19 @@ after a torrent is selected while keeping that selection visible.
 A later resolver adapter can connect the inbox to an explicitly configured
 request manager or indexer. It must preserve the current validation and review
 states, and it must never bypass login or CAPTCHA challenges.
+
+## Guided browser handoff
+
+Version 0.4 adds **Guided browser** to title and metadata-link requests. The page
+reuses Fox Den Music's authenticated Firefox/noVNC container, copies the request
+text, and can navigate the visible browser to `MEDIA_BROWSER_HOME_URL`.
+
+The administrator performs searches, login, consent, CAPTCHA, and result
+selection. After adding the result to qBittorrent, return to Requests and attach
+the matching torrent. The existing request worker handles completion, validation,
+review, and import from that point.
+
+The shared browser has its existing music-download inbox and browser-profile
+mounts. It has no Movie/TV library, torrent-staging, media database, qBittorrent
+credentials, Docker socket, or application secret mounts. The handoff does not
+copy browser downloads into the Movie/TV library.

@@ -14,6 +14,8 @@ class Settings:
     qbit_user: str = field(default_factory=lambda: os.getenv("QBIT_USERNAME", "admin"))
     qbit_password: str = field(default_factory=lambda: os.getenv("QBIT_PASSWORD", ""))
     qbit_download_root: str = field(default_factory=lambda: os.getenv("QBIT_DOWNLOAD_ROOT", "/downloads"))
+    media_browser_home_url: str = field(default_factory=lambda: os.getenv(
+        "MEDIA_BROWSER_HOME_URL", "https://www.themoviedb.org/"))
     token: str = field(default_factory=lambda: os.getenv("APP_TOKEN", ""))
     ffprobe: str = field(default_factory=lambda: os.getenv("FFPROBE_PATH", "ffprobe"))
     ffmpeg: str = field(default_factory=lambda: os.getenv("FFMPEG_PATH", "ffmpeg"))
@@ -32,6 +34,10 @@ class Settings:
                 parsed = urlsplit(url)
                 if parsed.scheme not in {"http", "https"} or not parsed.hostname or parsed.username or parsed.password:
                     raise ValueError("qBittorrent URLs must be HTTP(S), without embedded credentials.")
+        browser_home = urlsplit(self.media_browser_home_url)
+        if (browser_home.scheme != "https" or not browser_home.hostname
+                or browser_home.username or browser_home.password):
+            raise ValueError("MEDIA_BROWSER_HOME_URL must be HTTPS without embedded credentials.")
         for root in (self.config, self.staging, self.media):
             root.mkdir(parents=True, exist_ok=True)
         roots = [p.resolve() for p in (self.config, self.staging, self.media)]

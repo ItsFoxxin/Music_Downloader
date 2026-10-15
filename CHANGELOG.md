@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.4.0 - 2026-10-15
+
+### Added
+
+- Request-specific guided browser for Movie/TV requests using the existing
+  authenticated Firefox/noVNC service.
+- One-click request copying, configurable HTTPS discovery home, direct
+  qBittorrent access, and return-to-request navigation.
+- Authenticated single-request API and browser handoff tests.
+
+### Security
+
+- The browser retains its existing isolated mounts and receives no Movie/TV
+  library, torrent-staging, qBittorrent credentials, or application secrets.
+- Discovery-home configuration requires HTTPS without embedded credentials.
+- Login, CAPTCHA, result selection, and qBittorrent attachment remain visible
+  user actions.
+
 ## 0.3.0 - 2026-10-15
 
 ### Added

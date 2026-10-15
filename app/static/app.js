@@ -5,7 +5,9 @@ const size = n => { if (n == null) return "—"; const units=["B","KB","MB","GB"
 const time = n => new Date(n * 1000).toLocaleString();
 const empty = (title, text, icon="◇") => `<div class="empty"><span class="empty-icon">${icon}</span><strong>${esc(title)}</strong>${esc(text)}</div>`;
 const badge = (label, tone="") => `<span class="badge ${tone}">${esc(label)}</span>`;
-let state={status:null,torrents:[],torrentError:"",staging:[],jobs:[],library:[],requests:[]}, tab="overview", activeReview=null, busy=false, token="", authenticated=false;
+const requestedView=new URLSearchParams(location.search).get("view");
+const initialView=new Set(["overview","requests","downloads","staging","library","history","settings"]).has(requestedView)?requestedView:"overview";
+let state={status:null,torrents:[],torrentError:"",staging:[],jobs:[],library:[],requests:[]}, tab=initialView, activeReview=null, busy=false, token="", authenticated=false;
 
 async function api(path, body){
   const response=await fetch(`./api/${path}`,{method:body===undefined?"GET":"POST",headers:{...(token?{"Authorization":`Bearer ${token}`}:{ }),"Content-Type":"application/json","X-Foxden-Request":"1"},body:body===undefined?undefined:JSON.stringify(body)});
@@ -67,7 +69,7 @@ function requestTable(){
   return `<div class="expanded">Magnet requests are tracked automatically. For a name or IMDb/TMDB link, add the matching download in qBittorrent and attach it here.</div>`+table(["Request","Type","State","Next step"],rows.map(r=>{
     const tone=r.status==="failed"?"error":["waiting_for_user","needs_review"].includes(r.status)?"warn":"";
     let action="";
-    if(r.status==="waiting_for_user") action=choices?`<div class="actions"><select id="torrent-${r.id}" aria-label="Torrent for ${esc(r.title)}"><option value="">Choose a torrent…</option>${choices}</select><button class="mini" data-action="attach-request" data-id="${r.id}">Attach</button></div>`:`<small>Open qBittorrent and add a matching download.</small>`;
+    if(["waiting_for_user","failed"].includes(r.status)) action=`<div class="actions"><a class="mini button" href="./request-browser/${r.id}">Guided browser ↗</a>${choices?`<select id="torrent-${r.id}" aria-label="Torrent for ${esc(r.title)}"><option value="">Choose a torrent…</option>${choices}</select><button class="mini" data-action="attach-request" data-id="${r.id}">Attach</button>`:`<small>Open qBittorrent and add a matching download.</small>`}</div>`;
     else if(r.status==="needs_review") action=`<button class="mini" data-action="review" data-id="${esc(r.validation_id)}">Review import →</button>`;
     else action=`<small>${r.error?esc(r.error):r.status==="complete"?"Imported and verified.":"Fox Den is following this request."}</small>`;
     return `<tr><td class="name"><span class="row-title">${esc(r.title)}</span><small>${esc(r.query)}</small></td><td>${esc(r.media_type)}</td><td>${badge(r.status.replaceAll("_"," "),tone)}</td><td>${action}</td></tr>`;

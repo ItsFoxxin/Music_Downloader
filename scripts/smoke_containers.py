@@ -109,6 +109,10 @@ def main():
                                               "media_type": "Movie"}, expected=202)
             assert media_request["status"] == "waiting_for_user"
             assert any(item["id"] == media_request["id"] for item in api("requests"))
+            handoff = request(f"/transfers/request-browser/{media_request['id']}")
+            assert b"/server-browser/" in handoff and b"CI Requested Movie" in handoff
+            request("/transfers/assets/request-browser.js")
+            request("/transfers/assets/request-browser-bridge.js")
             assert b'id="app-version"' in request("/transfers/")
             request("/transfers/assets/app.js")
             assert b"Fox Den" in request("/")  # real music web application through shared session

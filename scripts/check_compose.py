@@ -27,6 +27,7 @@ def check(config):
     assert qmounts["/downloads"]["source"] == mounts["/staging"]["source"], "Staging sources differ"
     assert not qmounts["/downloads"].get("read_only"), "qBittorrent downloads must be writable"
     assert mounts["/media"]["source"] != mounts["/staging"]["source"], "Library and staging overlap"
+    assert media["environment"]["MEDIA_BROWSER_HOME_URL"].startswith("https://"), "Media browser home must use HTTPS"
     assert "NET_ADMIN" in vpn["cap_add"], "VPN capability missing"
     assert all("NET_ADMIN" not in s.get("cap_add", []) for n, s in services.items() if n != "gluetun"), "VPN capability leaked"
     assert any(s["source"] == "proton_wireguard_private_key" for s in vpn["secrets"]), "VPN key secret missing"

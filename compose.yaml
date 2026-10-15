@@ -209,7 +209,7 @@ services:
       args:
         APP_UID: "${PUID:-10001}"
         APP_GID: "${PGID:-10001}"
-    image: fox-den-media:0.3.0
+    image: fox-den-media:0.4.0
     user: "${PUID:-10001}:${PGID:-10001}"
     init: true
     read_only: true
@@ -228,6 +228,7 @@ services:
       QBIT_USERNAME: "${QBIT_USERNAME:-admin}"
       QBIT_PASSWORD: "${QBIT_PASSWORD:-}"
       QBIT_DOWNLOAD_ROOT: "${QBIT_DOWNLOAD_ROOT:-/downloads}"
+      MEDIA_BROWSER_HOME_URL: "${MEDIA_BROWSER_HOME_URL:-https://www.themoviedb.org/}"
       FULL_DECODE: "${FULL_DECODE:-true}"
       COOKIE_SECURE: "${COOKIE_SECURE:-false}"
       SETTLE_SECONDS: "${SETTLE_SECONDS:-3}"

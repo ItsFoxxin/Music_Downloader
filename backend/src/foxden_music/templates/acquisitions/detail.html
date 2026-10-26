@@ -72,6 +72,7 @@
         <div><dt>Artist</dt><dd>{{ manifest.artist or 'Unknown' }}</dd></div>
         <div><dt>Release ID</dt><dd class="mono">{{ manifest.release_id or 'Recording only' }}</dd></div>
         <div><dt>Recording ID</dt><dd class="mono">{{ manifest.recording_id or 'Album request' }}</dd></div>
+        <div><dt>Import scope</dt><dd>{{ 'Requested recording only' if manifest.request_scope == 'RECORDING' else 'Complete release' }}</dd></div>
         <div><dt>Edition</dt><dd>{{ manifest.album_edition.title if manifest.album_edition else 'Needs selection' }}</dd></div>
         <div><dt>Expected tracks</dt><dd>{{ manifest.expected_tracks|length }}</dd></div>
       </dl>
@@ -113,6 +114,8 @@
       </div>
       <button class="button primary" type="submit" data-upload-submit>Upload and start import</button>
     </form>
+    {% endif %}
+    {% if not acquisition.associated_import_job_id and acquisition.state in ['REQUESTED', 'RESOLVING', 'QUEUED', 'WAITING_FOR_USER', 'WAITING_FOR_DOWNLOAD', 'ACQUIRING'] %}
     <form class="panel form-stack danger-panel" action="/acquisitions/{{ acquisition.id }}/cancel" method="post">
       <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
       <div><p class="eyebrow">Waiting request</p><h2>Cancel this request</h2><p class="muted">This removes it from the active queue. It does not delete anything downloaded in your browser or touch media files.</p></div>

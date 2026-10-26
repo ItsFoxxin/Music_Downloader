@@ -418,6 +418,98 @@ def test_release_duration_matching_allows_clear_title_match_with_drift() -> None
     assert not _release_duration_compatible(track, {"title": "Different Song", "duration": 109.0})
 
 
+def test_recording_scoped_candidate_tags_one_track_from_two_track_single(
+    settings, database
+) -> None:
+    job_id = "30000000-0000-0000-0000-000000000060"
+    recording_id = "297dfc0d-5fec-7b20-1653-d1857ca4b580"
+    instrumental_id = "397dfc0d-5fec-7b20-1653-d1857ca4b581"
+    incoming = settings.jobs_dir / job_id / "incoming"
+    incoming.mkdir(parents=True)
+    source = incoming / "Night Run.flac"
+    source.write_bytes(b"synthetic")
+    payload = {
+        "id": "f21c2200-85ae-4aaa-94d9-e80079a1e705",
+        "title": "Den Songs",
+        "date": "2024-10-15",
+        "artist-credit": [{"name": "Fox Artist", "joinphrase": ""}],
+        "_foxden_requested_recording_id": recording_id,
+        "media": [{
+            "position": 1,
+            "track-count": 2,
+            "tracks": [
+                {
+                    "position": 1,
+                    "title": "Night Run",
+                    "length": 180000,
+                    "recording": {
+                        "id": recording_id,
+                        "title": "Night Run",
+                        "artist-credit": [{"name": "Fox Artist", "joinphrase": ""}],
+                    },
+                },
+                {
+                    "position": 2,
+                    "title": "Night Run (Instrumental)",
+                    "length": 181000,
+                    "recording": {
+                        "id": instrumental_id,
+                        "title": "Night Run (Instrumental)",
+                        "artist-credit": [{"name": "Fox Artist", "joinphrase": ""}],
+                    },
+                },
+            ],
+        }],
+    }
+    with database.session() as session:
+        job = Job(
+            id=job_id,
+            state=JobState.TAGGING.value,
+            display_name="Night Run",
+            source_filename="Night Run.flac",
+            source_relative_path="incoming/Night Run.flac",
+            selected_release_id=payload["id"],
+        )
+        session.add(job)
+        session.flush()
+        track = _track(job_id, sha="6" * 64, title="Night Run")
+        track.duration_seconds = 180.0
+        track.original_tags_json = serialize_hints(
+            TagHints(
+                title="Night Run",
+                artist="Fox Artist",
+                album_artist="Fox Artist",
+                album="Den Songs",
+                track_number=1,
+                track_total=1,
+                disc_number=1,
+                disc_total=1,
+            )
+        )
+        candidate = ReleaseCandidate(
+            job_id=job_id,
+            musicbrainz_release_id=payload["id"],
+            title="Den Songs",
+            artist_credit="Fox Artist",
+            release_date="2024-10-15",
+            track_count=1,
+            source_score=98,
+            score=98,
+            payload_json=json.dumps(payload),
+            selected=True,
+        )
+        session.add_all([track, candidate])
+        session.flush()
+
+        plans = _metadata_plans(settings, job, candidate)
+
+    assert len(plans) == 1
+    assert plans[0].metadata.title == "Night Run"
+    assert plans[0].metadata.musicbrainz_recording_id == recording_id
+    assert plans[0].metadata.track_number == 1
+    assert plans[0].metadata.track_total == 2
+
+
 def test_incoming_partial_album_claim_requires_review(settings, database) -> None:
     job_id = "30000000-0000-0000-0000-000000000006"
     (settings.jobs_dir / job_id).mkdir(parents=True)

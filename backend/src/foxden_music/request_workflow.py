@@ -178,6 +178,39 @@ def release_manifest(
     }
 
 
+def recording_manifest(
+    recording: Mapping[str, Any],
+    release_payload: Mapping[str, Any],
+    preferred_format: str,
+    *,
+    confidence: float,
+    reasons: Sequence[str],
+) -> tuple[dict[str, Any], bool]:
+    """Build a one-recording manifest while retaining its release edition tags."""
+
+    recording_id = str(recording.get("id") or "")
+    manifest = release_manifest(
+        release_payload,
+        preferred_format,
+        confidence=confidence,
+        reasons=reasons,
+    )
+    matches = [
+        track
+        for track in manifest["expected_tracks"]
+        if str(track.get("recording_id") or "") == recording_id
+    ]
+    manifest["request_scope"] = "RECORDING"
+    manifest["recording_id"] = recording_id
+    manifest["expected_tracks"] = matches
+    # Keep the complete edition payload for album metadata and original track
+    # totals. The namespaced selector limits this import to the requested song.
+    payload = dict(release_payload)
+    payload["_foxden_requested_recording_id"] = recording_id
+    manifest["musicbrainz_payload"] = payload
+    return manifest, len(matches) == 1
+
+
 class SpotifyClient:
     """Small Client Credentials adapter used only for metadata resolution."""
 
@@ -251,6 +284,7 @@ def _recording_result(
         reasons = (reason, "Recording has no attached release edition")
         manifest = {
             "schema_version": 1,
+            "request_scope": "RECORDING",
             "artist": _artist_credit(recording.get("artist-credit")),
             "release_id": None,
             "recording_id": recording.get("id"),
@@ -271,9 +305,24 @@ def _recording_result(
     ambiguous = len(release_ids) > 1
     reasons = (reason,) + ((f"Recording appears on {len(release_ids)} editions",) if ambiguous else ())
     confidence = 88.0 if ambiguous else 98.0
-    manifest = release_manifest(mb.lookup_release(release_ids[0]), preferred, confidence=confidence, reasons=reasons)
-    manifest["recording_id"] = recording.get("id")
-    return ResolutionResult(manifest, confidence, reasons, ambiguous, "Confirm the intended release edition" if ambiguous else None)
+    manifest, unique_match = recording_manifest(
+        recording,
+        mb.lookup_release(release_ids[0]),
+        preferred,
+        confidence=confidence,
+        reasons=reasons,
+    )
+    if not unique_match:
+        ambiguous = True
+        reasons = reasons + ("Requested recording was not unique in the selected edition",)
+        manifest["resolution"] = {"confidence": confidence, "reasons": list(reasons)}
+    return ResolutionResult(
+        manifest,
+        confidence,
+        reasons,
+        ambiguous,
+        "Confirm the intended release edition" if ambiguous else None,
+    )
 
 
 def resolve_reference(

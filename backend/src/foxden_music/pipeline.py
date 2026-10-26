@@ -939,6 +939,18 @@ def _metadata_plans(
         except json.JSONDecodeError as exc:
             raise ReviewRequired("The cached MusicBrainz release data was invalid. Choose the release again.") from exc
         release_tracks = _release_track_rows(payload)
+        requested_recording_id = str(payload.get("_foxden_requested_recording_id") or "")
+        if requested_recording_id:
+            release_tracks = [
+                row
+                for row in release_tracks
+                if str(row.get("recording_id") or "") == requested_recording_id
+            ]
+            if len(release_tracks) != 1:
+                raise ReviewRequired(
+                    "The requested recording is missing or repeated in the selected release. Choose another edition.",
+                    kind="METADATA",
+                )
         if len(release_tracks) != len(ordered_tracks):
             raise ReviewRequired(
                 f"The selected release has {len(release_tracks)} tracks but the import has {len(ordered_tracks)}. Choose another edition."

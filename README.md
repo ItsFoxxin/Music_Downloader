@@ -11,6 +11,17 @@ See [CI layers and required GitHub branch settings](docs/ci.md). Workflows repor
 results; branch protection must require **Dev gate** / **Main gate** to block
 unsafe merges.
 
+## v2.5.1 · Single-recording release support
+
+Track and MusicBrainz recording requests now import only the requested recording
+when the chosen edition also contains an instrumental, B-side, remix, or bonus
+track. Fox Den keeps the edition's canonical album, position, total, year, and
+MusicBrainz IDs for tagging, but it no longer mistakes a deliberate one-song
+request for an incomplete album. Album and release requests still require the
+complete selected edition.
+
+See [v2.5.1 release notes and manual test](docs/request-workflow-v2.5.1.md).
+
 ## v2.5.0 · Automated music-request workflow
 
 Fox Den Music now accepts artist/song and artist/album names, artist requests,

@@ -22,6 +22,7 @@ from foxden_music.providers import ProviderAdapterError, provider_adapter
 
 RELEASE_ID = "f21c2200-85ae-4aaa-94d9-e80079a1e705"
 RECORDING_ID = "297dfc0d-5fec-7b20-1653-d1857ca4b580"
+INSTRUMENTAL_RECORDING_ID = "397dfc0d-5fec-7b20-1653-d1857ca4b581"
 
 
 def release_payload() -> dict:
@@ -34,21 +35,35 @@ def release_payload() -> dict:
         "artist-credit": [{"name": "Fox Artist", "joinphrase": ""}],
         "media": [{
             "position": 1,
-            "tracks": [{
-                "position": 1,
-                "title": "Night Run",
-                "length": 180000,
-                "recording": {
-                    "id": RECORDING_ID,
+            "track-count": 2,
+            "tracks": [
+                {
+                    "position": 1,
                     "title": "Night Run",
                     "length": 180000,
-                    "isrcs": ["USFOX2400001"],
-                    "artist-credit": [{"name": "Fox Artist", "joinphrase": ""}],
+                    "recording": {
+                        "id": RECORDING_ID,
+                        "title": "Night Run",
+                        "length": 180000,
+                        "isrcs": ["USFOX2400001"],
+                        "artist-credit": [{"name": "Fox Artist", "joinphrase": ""}],
+                    },
                 },
-            }],
+                {
+                    "position": 2,
+                    "title": "Night Run (Instrumental)",
+                    "length": 181000,
+                    "recording": {
+                        "id": INSTRUMENTAL_RECORDING_ID,
+                        "title": "Night Run (Instrumental)",
+                        "length": 181000,
+                        "isrcs": ["USFOX2400002"],
+                        "artist-credit": [{"name": "Fox Artist", "joinphrase": ""}],
+                    },
+                },
+            ],
         }],
     }
-
 
 class FakeMusicBrainz:
     def __enter__(self):
@@ -60,6 +75,17 @@ class FakeMusicBrainz:
     def lookup_release(self, release_id: str):
         assert release_id == RELEASE_ID
         return release_payload()
+
+    def lookup_recording(self, recording_id: str):
+        assert recording_id == RECORDING_ID
+        return {
+            "id": RECORDING_ID,
+            "title": "Night Run",
+            "length": 180000,
+            "isrcs": ["USFOX2400001"],
+            "artist-credit": [{"name": "Fox Artist", "joinphrase": ""}],
+            "releases": [{"id": RELEASE_ID}],
+        }
 
 
 def test_request_parser_accepts_names_spotify_and_musicbrainz() -> None:
@@ -115,6 +141,28 @@ def test_direct_musicbrainz_release_builds_canonical_manifest(settings) -> None:
         "isrcs": ["USFOX2400001"],
         "duration_seconds": 180.0,
     }
+
+
+def test_recording_request_scopes_a_two_track_single_to_one_song(settings) -> None:
+    reference = RequestReference(
+        AcquisitionSourceType.RECORDING,
+        f"https://musicbrainz.org/recording/{RECORDING_ID}",
+        RECORDING_ID,
+    )
+    result = resolve_reference(reference, settings, FakeMusicBrainz())
+
+    assert result.needs_user is False
+    assert result.manifest["request_scope"] == "RECORDING"
+    assert result.manifest["recording_id"] == RECORDING_ID
+    assert [track["recording_id"] for track in result.manifest["expected_tracks"]] == [
+        RECORDING_ID
+    ]
+    assert result.manifest["expected_tracks"][0]["track_number"] == 1
+    assert (
+        result.manifest["musicbrainz_payload"]["_foxden_requested_recording_id"]
+        == RECORDING_ID
+    )
+    assert len(result.manifest["musicbrainz_payload"]["media"][0]["tracks"]) == 2
 
 
 def test_resolver_advances_request_and_persists_manifest(database, settings) -> None:

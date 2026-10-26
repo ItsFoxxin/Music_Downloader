@@ -1,107 +1,108 @@
 # Compatibility matrix
 
-Status: Phase 0 baseline; live NAS state not verified  
+Status: Revised Phase 0 baseline; live NAS state not verified  
 Observed repository date: 2026-10-26
 
-This matrix separates confirmed repository facts from target contracts. It is not a claim about the versions running on the NAS.
+## Current source baseline
 
-## Current repository baseline
+| Component | Observed ref | Role in consolidation | Rule |
+| --- | --- | --- | --- |
+| Music_Downloader stable | v2.2.5, master/main at 84d3469, schema 2 | Historical stable Music baseline | Preserve history; do not use as newer source |
+| Music_Downloader development | v2.5.1, dev at b4bbffb, schema 3 | Authoritative Music foundation | Independent release work must finish first |
+| Music draft PR | dev to main, draft | Active independent work | Resolve before rename/path migration |
+| Media bundled Music | v2.3.4 in Media dev | Obsolete duplicate | Exclude from history import and active source |
+| Media Movies/TV | v0.4.0, Media dev cc71b8e | Authoritative Movies/TV source | Import unique history |
+| Phase 0 revision | Media dev after 41b23ce | Architecture provenance | Import approved Portal/architecture work later |
+| Media gateway | nginx stable-alpine configuration | Ingress input | Reconcile with Portal auth; do not copy blindly |
+| Music gateway | nginx stable-alpine configuration | Upload/browser input | Reconcile with platform ingress |
+| Browser | jlesage/firefox latest | Optional shared infrastructure | Pin tested image before stable release |
+| qBittorrent | LinuxServer latest | External or managed torrent service | Record tested API/version and pin managed image |
+| Gluetun | v3.41.1 default | Optional managed VPN | Pin digest and host-test VPN behavior |
+| Jellyfin | External | Optional integration | Never required for platform startup |
 
-| Component | Observed version/ref | State | Database/API | Current integration notes |
-| --- | --- | --- | --- | --- |
-| Standalone Music stable | v2.2.5, master/main at 84d3469 | Stable repository baseline | Music schema 2 | Independently deployable; default branch is still master |
-| Standalone Music development | v2.5.1, dev at b4bbffb | Provisional; draft PR | Music schema 3 | Dev gate passed; strict PR gate is blocked by dependency audit |
-| Bundled Music in Media | v2.3.4 in Media dev cc71b8e | Integrated copied source | Music schema 2 | Built from music/backend; not sourced from standalone image |
-| Media application | v0.4.0, dev at cc71b8e | Development integration baseline | media.db with additive acquisition_id check; no explicit schema version | Movies/TV API and background worker share one process |
-| Integrated gateway | nginx:stable-alpine moving tag | Development baseline | Media session subrequest | Root Music route and browser require Media session; all modules are mandatory |
-| Standalone Music gateway | nginx:stable-alpine moving tag | Standalone baseline | No Media session dependency | Routes Music and browser |
-| Contained browser | jlesage/firefox:latest moving tag | Optional in intent, mandatory in current Compose | noVNC/HTTP on 5800 | Shared profile and Music download inbox; no media library or Docker socket |
-| qBittorrent | lscr.io/linuxserver/qbittorrent:latest moving tag | Mandatory in current Media Compose | Web API; code handles qBittorrent 4 and newer action naming | Shares Gluetun network namespace and /downloads mapping |
-| Gluetun | qmcgaw/gluetun:v3.41.1 default | Mandatory in current Media Compose | Container health and WireGuard environment | Owns published qBittorrent Web UI port and NET_ADMIN |
-| Jellyfin | External, unpinned | Optional | Library refresh API | Music worker only; URL/key may be blank |
+These are repository observations, not claims about the NAS.
 
-Current compatibility must not be inferred beyond these observed sources. The actual NAS image digests, schemas, mounts, credentials, and service versions require the read-only inventory.
+## Target monorepo compatibility record
 
-## Target release matrix fields
+Every platform release records:
 
-Every integrated Media release must publish:
+- platform semantic version and source commit;
+- Portal, Music, Media, ingress, and browser image digests;
+- Portal, Music, and Media database schema ranges;
+- contract-schema and environment-contract versions;
+- tested qBittorrent API/application range;
+- tested Gluetun image/VPN mode;
+- tested Jellyfin behavior;
+- supported CPU architectures;
+- passing deployment modes;
+- supported source upgrade versions and rollback requirements.
 
-| Field | Requirement |
-| --- | --- |
-| Media version and commit | Exact semantic version and source commit |
-| Media database range | Minimum, maximum, forward migration, and rollback rule |
-| Music version | Exact released semantic version |
-| Music image | Registry, immutable digest, source tag, and source commit |
-| Music database range | Minimum and maximum supported schema versions |
-| Gateway | Exact image digest and configuration revision |
-| Browser | Exact image digest, optional capability state, and supported route contract |
-| qBittorrent | Tested server version/API range and whether external or managed |
-| Gluetun | Tested image digest and supported VPN mode; not applicable for external qBittorrent |
-| Jellyfin | Tested API behavior or explicitly untested optional state |
-| Architectures | Tested CPU architectures; no implied support for untested platforms |
-| Deployment modes | Passing acceptance results for each advertised mode |
-| Configuration contract | Supported variable-set version and deprecations |
-| Migration | Source versions, required backups, and rollback procedure |
+All first-party images are produced from one platform release commit. Database schemas retain independent versions.
 
-## Target compatibility rules
+## Portal/module contract compatibility
 
-### Music image
+| Consumer | Provider | Required behavior |
+| --- | --- | --- |
+| Portal | Music | Versioned capability, health, activity, and navigation API |
+| Portal | Movies/TV | Same contract; independent timeout/failure handling |
+| Ingress | Portal | Session validation/auth decision |
+| Music | Portal/ingress | Verified internal identity assertion in integrated mode |
+| Movies/TV | Portal/ingress | Verified internal identity assertion in integrated mode |
+| Portal | Disabled module | No request; module hidden |
+| Portal | Unhealthy module | Bounded failure; module shown unhealthy; Portal stays healthy |
 
-- Media consumes only a released standalone Music image that passes the Music image acceptance criteria.
-- Media pins the image digest.
-- Media integration tests may exercise a release candidate, but an integrated stable release may not pin an unapproved development build.
-- A Music schema outside the published supported range must fail before a worker claims jobs or writes library data.
+No consumer reads another module database.
 
-### Gateway and authentication
+## Deployment-mode configuration compatibility
 
-- Music Only has no dependency on a Media session endpoint.
-- Movies/TV Only has no dependency on a Music health endpoint.
-- Full mode may use a shared login, but authentication failure must be distinguishable from an unavailable optional module.
-- Reverse-proxy base URL, trusted-forwarded-header behavior, HTTPS, and secure-cookie settings are environment-driven and mode-validated.
-- The browser and qBittorrent are not independently exposed by default in Full mode.
+| Mode | Required groups | Explicitly not required |
+| --- | --- | --- |
+| Music Only | platform, Portal, Music paths/runtime | Media, qBittorrent, Gluetun, VPN |
+| Movies/TV external | platform, Portal, Media, external qBittorrent mapping | Music, MusicBrainz, Gluetun, VPN |
+| Full external | platform, Portal, Music, Media, external qBittorrent | managed Gluetun/WireGuard |
+| Full Managed | platform, Portal, Music, Media, browser, qBittorrent, Gluetun | external client ownership |
+| Any without Jellyfin | selected modules only | Jellyfin URL/key |
+| Any without browser | selected modules only | browser profile/port/provider home |
 
-### Browser
+Disabled groups must not be interpolated, validated, mounted, or health-gated.
 
-- Browser absence must not prevent non-browser workflows from starting.
-- Media handoff remains human-controlled and receives no torrent credentials, Docker socket, application database, or media-library mount.
-- A shared browser may mount the Music download inbox only in modes that enable Music acquisition.
-- Browser image and profile migrations must be documented before changing the pinned version.
+## Existing-variable migration
 
-### qBittorrent and VPN
+The monorepo migration retains compatibility mappings for existing documented variables, including paths, PUID/PGID, umask, timezone, web binding, Music providers, Jellyfin, browser, Media, qBittorrent, and WireGuard settings.
 
-- External qBittorrent is supported without Gluetun configuration.
-- Managed qBittorrent preserves the exact container-side download root used in resume data.
-- Managed VPN requires a healthy Gluetun service before qBittorrent starts.
-- qBittorrent and Gluetun image upgrades are separate from application/database migrations unless explicitly tested together.
-- Moving latest tags are development conveniences only and are not accepted release pins.
+Rules:
 
-### Jellyfin and metadata providers
+- semantics do not change silently;
+- replacement names have a documented compatibility period;
+- module-specific examples contain no irrelevant variables;
+- direct secrets gain file-based forms before direct forms are deprecated;
+- preflight reports deprecated names without values;
+- CI renders old-variable fixtures and new module-scoped fixtures;
+- no developer or NAS-specific value is required.
 
-- Jellyfin disabled is a valid state with no URL or key.
-- MusicBrainz configuration belongs to Music modes only.
-- Optional Spotify, AcoustID, or other provider credentials are validated only when their feature is enabled.
-- Metadata-provider outages must not make local library browsing or already validated import history unavailable.
+## Repository and artifact compatibility
 
-## Environment-variable compatibility
+A repository rename preserves most GitHub repository information and git redirects, but the migration checklist separately verifies:
 
-Environment names and semantics are a public deployment contract.
+- open PR disposition;
+- Actions and reusable-action references;
+- badges and raw links;
+- Pages;
+- releases and tags;
+- branch rules and default branch;
+- environments and secrets names;
+- webhooks and deployment integrations;
+- GHCR image naming, association, and permissions;
+- local clone remotes;
+- old-name non-reuse.
 
-During migration:
+## Known blockers
 
-- existing CONFIG_PATH, STAGING_PATH, MUSIC_PATH, DOWNLOAD_INBOX_PATH, BROWSER_CONFIG_PATH, MEDIA_CONFIG_PATH, TORRENT_STAGING_PATH, MEDIA_PATH, TORRENT_CONFIG_PATH, GLUETUN_CONFIG_PATH, PUID, PGID, FILE_UMASK, TZ, WEB_BIND_IP, WEB_PORT, Jellyfin, MusicBrainz, qBittorrent, and WireGuard variables remain recognized;
-- module-specific examples contain only relevant settings;
-- replacement names require at least one documented deprecation cycle or an explicit migration transformer;
-- secret-file forms may be added without removing compatible direct-value forms until the migration release documents the transition;
-- disabled modules must not trigger required-variable interpolation;
-- CI renders every supported mode with only its declared environment file;
-- no example contains a developer path or populated secret.
-
-## Known incompatibilities and blockers
-
-- Music schema 3 cannot be assumed rollback-compatible with v2.2.5/schema 2. A schema-2 config backup is required before upgrade.
-- The current Media gateway cannot provide Music Only because its auth check depends on Media.
-- The current Media Compose cannot omit qBittorrent, Gluetun, browser, or either application module.
-- The bundled Music 2.3.4 and standalone Music 2.5.1 are not interchangeable source trees.
-- The current qBittorrent and browser moving tags do not provide reproducible release compatibility.
-- The current Media database needs explicit schema metadata before significant migrations.
-- NAS filesystem, VPN, qBittorrent appdata, reverse proxy, and ownership compatibility remain unverified.
+- Music strict release gate currently has a dependency-audit failure.
+- Music active PR/default-branch state is not ready for rename.
+- Portal and module contracts do not yet exist.
+- Current Media auth depends on Movies/TV and violates the Portal requirement.
+- Current Media Compose makes all services mandatory.
+- Moving browser/qBittorrent/gateway tags are not reproducible.
+- Media database lacks explicit schema metadata.
+- Live NAS versions, paths, mounts, permissions, filesystem behavior, VPN, and qBittorrent state remain unverified.

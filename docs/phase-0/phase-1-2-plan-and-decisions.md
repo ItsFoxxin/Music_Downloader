@@ -1,141 +1,159 @@
-# Phase 1 and Phase 2 proposed implementation plan
+# Revised Phase 1 and Phase 2 implementation plan
 
-Status: Review required before implementation
+Status: Review required before implementation  
+Architecture: Modular monorepo with independent Portal
 
-## Phase 1: establish the authoritative Music artifact contract
+## First safe implementation alongside current Music work
 
-Phase 1 does not take over the independent Music bug-fix task.
+Phase 1A is the first safe implementation phase:
 
-### Music-owned prerequisite
+- work only in Media_Downloader on a dedicated feature branch;
+- create a new apps/portal foundation and contracts schemas;
+- use mock Music and Movies/TV module adapters;
+- add Portal unit, security, degraded-state, and contract tests;
+- do not connect Portal to current Compose, gateway, databases, or NAS;
+- do not change, copy, move, or merge Music_Downloader;
+- keep Portal free of module databases, libraries, torrent appdata, VPN secrets, and browser profiles.
 
-The independent Music work delivers a release candidate that:
+This work can later be imported as part of Media unique history. It does not conflict with Music bug fixes because it consumes only proposed contracts and mocks.
 
-- resolves the current dependency audit failure;
-- passes all Music release acceptance criteria;
-- publishes a semantic version, immutable image digest, release notes, schema range, and environment contract;
-- documents CI-validated versus real-environment-unverified behavior.
+Phase 1A requires approval before implementation.
 
-Media work waits for that artifact rather than editing Music source.
+## Phase 1: independent foundations
 
-### Media-owned work
+### Phase 1A: Portal and contracts
 
-1. Add a machine-readable compatibility manifest schema.
-2. Record the candidate Music version, digest, commit, schema range, and required environment-contract revision.
-3. Add read-only CI verification that:
-   - the image metadata matches the declared release;
-   - the image is pinned immutably;
-   - non-root web and worker commands start;
-   - health checks and declared mount ownership match the contract.
-4. Create Music Only and Full integration fixtures that use the published image while retaining the bundled source path as rollback.
-5. Map every item in the Music integration-preservation document to automated evidence or an explicitly manual check.
-6. Produce an updated removal-readiness report.
+1. Finalize versioned capability, health, activity, navigation, and identity-assertion schemas.
+2. Implement Portal configuration, module registry, homepage, login/session, health aggregation, combined activity, and degraded-state UI against mocks.
+3. Add bounded timeouts, sanitized errors, and contract-version handling.
+4. Add a minimal Portal container with non-root/read-only hardening.
+5. Add tests proving zero-module startup and module failure isolation.
+6. Do not alter production Compose.
 
-### Phase 1 exclusions
+### Phase 1B: consolidation rehearsal
 
-- no bundled-source removal;
-- no production database migration;
-- no NAS deployment;
-- no replacement of the currently running Music image;
-- no Compose mode rollout to production.
+1. Inventory branches, tags, releases, PRs, Actions, settings, packages, and links in both repositories.
+2. Create and verify bare mirrors.
+3. Build a temporary filtered Media history excluding music and all state/secrets.
+4. Produce source-to-filtered commit mapping.
+5. Rehearse Music path moves and unrelated-history merge in disposable repositories.
+6. Generate collision, provenance, size, secret, and test reports.
+7. Do not rename or merge the real repositories.
 
-### Phase 1 exit gate
+### Independent Music prerequisite
 
-- authoritative Music release is green and published;
-- dependency audit passes;
-- Media verifies the image by digest;
-- Music Only and provisional Full image-based tests pass;
-- rollback to the bundled development path remains possible;
-- user reviews evidence and approves Phase 2.
+The separate Music task must:
 
-## Phase 2: implement modular portable deployment
+- finish its bug fixes;
+- resolve dependency audit failure;
+- pass its release gates;
+- identify an authoritative commit, schema, configuration contract, and rollback boundary.
 
-### Work package 1: configuration contract
+Portal/contracts work may proceed without waiting. Real source consolidation may not.
 
-- Define versioned public variables by module.
-- Preserve existing variable names during the migration window.
-- Add consistent secret-file support.
-- Create safe full catalog plus Music, Media, Full, external-qBittorrent, managed-torrent, and migration examples.
-- Document precedence, defaults, enable flags, deprecations, and redaction rules.
-- Keep internal settings internal unless an operator benefit is demonstrated.
+### Phase 1 exit
 
-### Work package 2: deployment entrypoints
+- Portal mock implementation and security tests pass;
+- contracts reviewed by Music and Media owners;
+- filtered-history rehearsal proves obsolete music exclusion;
+- repository rename impact inventory complete;
+- independent Music checkpoint green;
+- user approves Phase 2.
 
-- Add explicit Music Only, Movies/TV Only, Full, and managed-torrent Compose entrypoints/overlays.
-- Ensure disabled modules do not interpolate required variables.
-- Replace moving tags with reviewed release pins in stable manifests.
-- Preserve current service isolation, capabilities, read-only filesystems, and mount minimality.
-- Support external qBittorrent without Gluetun.
-- Make browser and Jellyfin independently optional.
+## Phase 2: canonical monorepo bootstrap
 
-### Work package 3: gateway modes
+### Work package 1: create bootstrap branch
 
-- Provide mode-specific route configuration.
-- Remove Music Only dependency on Media session checks.
-- Preserve shared authentication for Full mode according to the approved auth decision.
-- Validate reverse-proxy base URLs, forwarded headers, HTTPS, secure cookies, upload limits, and browser websockets.
-- Default to no independent browser or qBittorrent exposure.
+- Start from approved authoritative Music commit.
+- Create monorepo/bootstrap.
+- Move Music source under apps/music with history-preserving moves.
+- Keep database format and runtime behavior unchanged.
 
-### Work package 4: preflight
+### Work package 2: import unique Media history
 
-- Implement a mode-aware, redacting preflight command.
-- Check values, directories, ownership/access, overlaps, atomic-publication layout, qBittorrent path mapping, optional dependencies, and exposure.
-- Provide corrective error messages without secrets.
-- Run preflight in CI and document it as the first deployment step.
+- Merge the reviewed filtered history under collision-free namespace.
+- Move Movies/TV to apps/media.
+- Move approved Portal/contracts work to canonical paths.
+- Reconcile tests/docs/infrastructure using the source ownership map.
+- Verify only one active Music implementation exists.
 
-### Work package 5: CI and documentation
+### Work package 3: Portal and ingress integration
 
-- Implement every deployment-mode and portability criterion.
-- Add compatibility tests for existing variables.
-- Add beginner quick starts and advanced examples.
-- Add migration example without performing a migration.
-- Record exact evidence boundaries.
+- Add Music and Media contract endpoints.
+- Make Portal authoritative for integrated auth.
+- Make ingress use Portal auth without moving product logic into ingress.
+- Validate signed/integrity-protected internal identity.
+- Preserve independent failure behavior.
 
-### Work package 6: remove copied Music source
+### Work package 4: modular deployment
 
-This is last, not first.
+- Add Music Only, Movies/TV external, Full external, and Full Managed compositions.
+- Provide mode-scoped environment examples.
+- Implement redacting mode-aware preflight.
+- Preserve existing variable compatibility.
+- Pin stable images and document platform limitations.
+- Provide one simple Full Managed command.
 
-- Require all Phase 1 and Phase 2 tests to pass using the image.
-- Confirm no build, test, script, gateway, browser, documentation, or migration dependency remains on the copied tree.
-- Preserve a tagged pre-removal Media revision.
-- Remove the tree in one reviewable change.
-- Do not deploy or migrate the NAS without a separate cutover approval.
+### Work package 5: monorepo CI and releases
 
-## Proposed validation order
+- Use path-aware module jobs for development.
+- Require complete sequential platform gates for stable release.
+- Test Portal contracts, every deployment mode, isolation, migrations on copies, packaging, and containers.
+- Publish coordinated first-party images from one commit.
+- Publish compatibility manifest, SBOM policy output, release notes, backup, and rollback guidance.
 
-1. Static configuration and secret scan.
-2. Mode-specific Compose render.
-3. Preflight positive and negative fixtures.
-4. Music and Media unit tests.
-5. Published-image contract tests.
-6. Mode-specific container smoke.
-7. Gateway/auth/browser integration.
-8. Filesystem and interrupted-state integration.
-9. Package and compatibility manifest publication.
-10. Optional shadow environment rehearsal after separate approval.
+### Work package 6: repository rename
 
-## Remaining decisions requiring approval
+- Execute only after a successful dry run and explicit approval.
+- Rename Music_Downloader to FoxDen_Media at the approved point.
+- Update Actions/action references, remotes, badges, links, Pages, webhooks, packages, branch rules, environments, and documentation.
+- Do not reuse the old name.
+- Keep Media_Downloader available.
 
-| Decision | Recommended default | Why it matters |
+### Phase 2 exit
+
+- canonical monorepo tests and all modes pass;
+- Portal survives every module failure test;
+- provenance report and repository settings audit pass;
+- no production data touched;
+- user reviews evidence before repository merge/promotion or NAS migration.
+
+## Later phases, not authorized
+
+- shadow deployment using copied state;
+- database migration rehearsals;
+- NAS cutover;
+- old repository archival;
+- Media worker split;
+- production platform release.
+
+## Decision register
+
+| Decision | Recommended default | Approval state |
 | --- | --- | --- |
-| Music container registry visibility | Public GHCR unless licensing/privacy requires private | Determines authentication and beginner deployment complexity |
-| CPU architectures | amd64 required; add arm64 only after native CI/runtime evidence | Avoids claiming unsupported NAS hardware |
-| Authentication owner | Gateway/shared Media session for Full; standalone auth boundary for single-module modes | Removes current mandatory Media dependency without weakening Full mode |
-| Reverse-proxy trust | Explicit trusted proxy list; do not trust arbitrary forwarded headers | Prevents spoofed HTTPS/client identity |
-| qBittorrent default | External for existing-install migration; managed overlay for fresh installs | Minimizes disruption and preserves seeding/appdata |
-| Browser layout | One shared browser in Full mode, optional in each module; revisit dedicated profiles if conflicts appear | Minimizes containers while preserving isolation |
-| Browser exposure | Gateway-only by default | Reduces attack surface |
-| Jellyfin | Disabled unless both URL and secret are configured or an explicit enable flag is set | Makes no-Jellyfin mode predictable |
-| Secret migration | Add file forms first; retain direct values for one documented compatibility cycle | Supports existing installations safely |
-| Environment example filenames | Use module-scoped env directory plus root safe catalog | Beginner clarity and advanced composition |
-| Stable image pinning | Digest plus semantic version in compatibility manifest | Reproducibility and readable operations |
-| Vulnerability policy | No unresolved critical; dependency audit must pass; any lower-severity exception is documented and expires | Defines an objective release gate |
-| SBOM/signing | Generate SBOM in Phase 1; sign images if GHCR workflow support is approved | Supply-chain evidence versus workflow complexity |
-| Movies and TV paths | Expose separate MOVIES_PATH and TV_PATH or document a single MEDIA_PATH with fixed subdirectories | Affects portable storage layouts |
-| Base URL/path-prefix support | Support host-based proxy first; approve path-prefix support only with dedicated tests | Path-prefix behavior adds gateway and frontend complexity |
-| Resource limits | Document secure defaults with environment overrides for major services | NAS variability without exposing every internal knob |
-| Configuration contract versioning | Publish a simple integer contract revision with every component | Enables compatibility checks independent of app semver |
-| Database migration execution | Dedicated one-shot migration/preflight step before workers | Avoids multiple writers racing at startup |
-| Media worker split | Defer until after modular deployment unless reliability testing shows need | Limits Phase 2 scope |
-| Stable branch policy | Keep Media main stable and implement through dev/PR; separately resolve Music default-branch policy | Prevents architecture work from changing release governance implicitly |
+| Canonical lineage | Rename Music_Downloader after its release checkpoint | Proposed |
+| Final repository name | FoxDen_Media | Proposed |
+| Rename timing | After bootstrap is reviewable and active Music PR is resolved | Proposed |
+| Default branches | main stable, dev development; decide treatment of master during rehearsal | Unresolved |
+| First platform version | New major platform version | Unresolved |
+| Ingress/Portal split | Separate ingress and Portal containers | Proposed |
+| Portal persistence | Separate portal.db only if sessions/activity need durable state | Unresolved |
+| Internal identity | Signed short-lived assertion; exact mechanism threat-modeled in Phase 1 | Proposed |
+| Full Managed count | Eight containers; keep Media worker internal initially | Proposed |
+| Media worker split | Defer | Proposed |
+| History import | Filter Media history, exclude music, preserve provenance map | Proposed |
+| Original repositories | Retain until post-migration approval | Approved direction |
+| Registry/image names | New Fox Den Media package names; do not assume automatic rename | Unresolved |
+| Registry visibility | Public unless privacy/licensing requires private | Unresolved |
+| CPU support | amd64 initially; arm64 only after CI/runtime evidence | Unresolved |
+| qBittorrent migration default | External existing stack; managed option for fresh installs | Proposed |
+| Browser | One optional shared browser, gateway-only by default | Proposed |
+| Movies/TV paths | Separate configurable Movies and TV paths | Proposed |
+| Proxy support | Host-based first; path-prefix only with dedicated tests | Proposed |
+| Secret migration | Add file forms, retain direct values for one compatibility cycle | Proposed |
+| Database migrations | Dedicated one-shot migration/preflight before workers | Proposed |
+| SBOM/signing | SBOM required; signing decision pending | Unresolved |
+| Vulnerability gate | Dependency audit green; no unapproved critical vulnerabilities | Proposed |
+| Portal work location | Media feature branch for Phase 1A, later imported | Proposed |
 
-No Phase 1 or Phase 2 item is authorized by this plan. Approval should identify any recommended default that must change.
+No Phase 1 or Phase 2 work is authorized by this document.

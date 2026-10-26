@@ -1,166 +1,108 @@
-# Deployment-mode acceptance criteria
+# Deployment-mode and Portal acceptance criteria
 
-Status: Phase 0 test contract; not yet implemented
+Status: Revised Phase 0 test contract; not implemented
 
-## Common acceptance rules
+## Common platform criteria
 
 Every advertised mode must:
 
-- render and validate from its documented example without editing source or Compose YAML;
-- require only variables belonging to enabled modules;
-- use documented safe defaults and placeholder-only examples;
-- honor custom host paths, ports, bind addresses, UID/GID, umask, and timezone;
-- preflight missing paths, permissions, invalid URLs/ports, overlapping roots, and unsafe exposure;
-- never print secret values;
-- start enabled services independently of disabled modules;
-- expose only documented ports;
-- run application services non-root with current isolation controls;
-- provide health and capability status that distinguishes disabled, unavailable, and unhealthy;
-- survive a normal restart without losing completed state;
-- provide exact backup and rollback requirements;
-- pass on supported Linux CI and be clearly marked unverified on platforms not exercised.
+- render, preflight, and start from documented environment examples without source or Compose edits;
+- start ingress and Portal;
+- require only enabled-module variables;
+- honor custom paths, ports, bind addresses, UID/GID, umask, timezone, proxy URLs, and secret files;
+- preserve non-root/read-only/capability isolation;
+- expose no undocumented port;
+- never log secrets;
+- survive normal restart;
+- distinguish disabled, unavailable, unhealthy, and healthy modules;
+- keep Portal usable when any module is absent or unhealthy;
+- use separate module databases and mounts;
+- pass CI with synthetic data only.
 
-CI uses temporary paths and synthetic/test media. It never uses NAS state or real credentials.
+## Portal acceptance
+
+- Login, logout, session expiry, secure-cookie behavior, CSRF protection, and authorization pass.
+- Portal starts with zero enabled media modules and presents a coherent platform/setup page.
+- Disabled modules are hidden from navigation and activity.
+- Enabled healthy modules show current version and navigation.
+- Enabled unhealthy/unreachable modules show a clear degraded status without delaying or crashing the page.
+- Music failure does not disable Movies/TV navigation.
+- Movies/TV failure does not disable Music navigation.
+- Browser, qBittorrent, Gluetun, metadata-provider, and Jellyfin failures are scoped to their features.
+- Health/activity calls use bounded timeouts and sanitized data.
+- Portal has no Music/Media database, library, torrent, VPN, or browser-profile mount.
+- Portal authentication has no dependency on Movies/TV.
+- Modules reject spoofed client identity headers and accept only the approved internal assertion.
+- Combined activity tolerates missing, malformed, old-contract, and slow module responses.
 
 ## Music Only
 
-### Configuration
+Containers: ingress, Portal, Music web, Music worker; optional browser.
 
-- Requires Music config, staging, and library paths.
-- Download inbox is configurable and may be enabled independently of the browser.
-- Does not require Media paths, qBittorrent, Gluetun, WireGuard, torrent ports, or APP_TOKEN from the Media application.
-- MusicBrainz contact is required only for network metadata lookup; incoming-tag/manual paths explain reduced behavior when absent.
-- Jellyfin, Spotify, AcoustID, Chromaprint, and browser are independently optional.
-- Supports documented direct or reverse-proxied bind settings.
-
-### Topology and isolation
-
-- Starts Music web and worker plus only explicitly selected gateway/browser services.
-- Music web cannot write the real library.
-- Music worker can write the Music library but has no torrent appdata, VPN device, or Docker socket.
-- Browser-disabled mode has no browser dependency or browser port.
-- Gateway authentication does not call the absent Media service.
-
-### Functional test
-
-- Health endpoints pass.
-- Fresh database initializes.
-- Supported copied database migrates without losing history.
+- No Media, qBittorrent, Gluetun, VPN, Movies, or TV configuration.
+- Gateway auth uses Portal.
 - Direct test upload validates and imports atomically.
 - Existing destination is refused.
-- Library scan reports the test import.
-- Restart preserves history and inventory.
-- Jellyfin-disabled mode completes without a key.
-- Browser-enabled test verifies same-origin routing; browser-disabled test verifies ordinary imports still work.
+- Library scan/history survives restart.
+- Jellyfin-disabled and browser-disabled paths pass.
+- Portal reports Music health/activity and hides Movies/TV.
+- Simulated Music failure leaves Portal login and setup/status usable.
 
 ## Movies/TV Only with external qBittorrent
 
-### Configuration
+Containers: ingress, Portal, Movies/TV; optional browser.
 
-- Requires Media config, torrent-staging mapping, Movies/TV library paths, application authentication, and qBittorrent connection settings.
-- Does not require Music config/library paths, MusicBrainz, Spotify, AcoustID, Music worker variables, Gluetun, or WireGuard.
-- qBittorrent internal URL, browser-reachable URL, credentials/secret file, and exact container-side download root are independently validated.
-- Browser and Jellyfin remain optional unless a future Media feature explicitly enables them.
+- No Music path, MusicBrainz, Music worker, Gluetun, or WireGuard configuration.
+- External qBittorrent mapping is validated.
+- Torrent staging is read-only to Media.
+- Completed synthetic media validates and imports without removing the seeding source.
+- Incomplete, unsafe, moved, and out-of-root payloads fail.
+- Portal reports Media health/activity and hides Music.
+- qBittorrent unavailability degrades acquisition without disabling Portal.
 
-### Topology and isolation
+## Full with external qBittorrent
 
-- Starts Media and selected gateway/browser services.
-- Does not start Music web/worker, qBittorrent, or Gluetun.
-- Media sees torrent payloads read-only.
-- Media alone writes Movies/TV destinations.
-- Existing external qBittorrent remains authoritative for appdata and networking.
-- Gateway routes do not require Music health.
+Containers: ingress, Portal, Music web, Music worker, Movies/TV; optional browser.
 
-### Functional test
-
-- Connects to a disposable external qBittorrent fixture.
-- Maps a completed torrent path from qBittorrent root to read-only staging.
-- Rejects incomplete, moved, unsafe, or out-of-root payloads.
-- Validates synthetic media.
-- Imports to a disposable library with receipt and no-overwrite behavior.
-- Leaves source payload in place for seeding.
-- Restart reconciles documented interrupted states.
-- qBittorrent unavailability produces a clear degraded/error state without corrupting Media state.
-
-## Movies/TV Only with managed torrent/VPN
-
-In addition to external-qBittorrent criteria:
-
-- Gluetun settings are required only when the managed VPN overlay is selected.
-- qBittorrent shares Gluetun’s network namespace and publishes no independent network path.
-- Gluetun health gates qBittorrent startup.
-- Only Gluetun receives NET_ADMIN and /dev/net/tun.
-- qBittorrent Web UI exposure defaults to loopback or gateway-protected access.
-- CI validates topology and health with safe fixtures; a real VPN egress/kill-switch test is documented as environment acceptance.
-- Disabling managed VPN in favor of an external client removes every WireGuard requirement.
+- Music and Media flows pass independently.
+- External qBittorrent remains authoritative.
+- No Gluetun/WireGuard variables are required.
+- Combined activity has stable ordering and identifies source module.
+- Failure injection proves either module can fail without taking down Portal or the other module.
+- Authentication and navigation remain coherent across interfaces.
 
 ## Full Managed
 
-### Configuration
+Eight containers: ingress, Portal, Music web, Music worker, Movies/TV, Firefox, qBittorrent, Gluetun.
 
-- Combines module-specific environment files without redefining variable meanings.
-- Requires Music variables, Media variables, and managed torrent/VPN variables.
-- Optional Jellyfin and browser settings remain independently selectable.
-- Host paths are checked for unintended overlap.
-- Custom ports and reverse-proxy URLs are honored without Compose edits.
-- No personal address/path/domain appears in defaults.
-
-### Topology and isolation
-
-- Starts gateway, Music web, Music worker, Media, selected browser, qBittorrent, and Gluetun.
-- Gateway provides coherent Music, Movies/TV, and browser routes.
-- Shared authentication does not grant backend services unnecessary secrets.
-- Music and Media retain separate databases, staging areas, and final-library ownership.
-- qBittorrent appdata is writable only by qBittorrent.
-- Torrent staging is read-only to Media.
-- Browser has no Docker socket, torrent credentials, application databases, or media-library mounts.
-- Failure of Music does not corrupt Media; failure of Media does not corrupt Music.
-- Browser unavailability does not prevent non-browser operations.
-
-### Functional test
-
-- All health and capability checks report the expected topology.
-- Music test import and Movie/TV test import both pass.
-- Databases and histories remain independent.
-- Gateway login, logout, forwarded HTTPS, secure cookies, and websocket browser route pass.
-- qBittorrent download-root mapping and source-preserving import pass.
-- Gluetun/qBittorrent topology validation passes.
-- Restart order and dependency recovery pass.
-- Disabled Jellyfin path passes with no credentials.
-- Optional mocked Jellyfin refresh passes when enabled.
+- One documented command renders and starts the complete platform after environment preparation.
+- Gluetun health gates qBittorrent.
+- qBittorrent shares Gluetun networking and has no independent published network.
+- Only Gluetun receives NET_ADMIN and /dev/net/tun.
+- Browser has no application databases, libraries, Docker socket, qBittorrent credentials, or VPN secret.
+- Music and Movies/TV test imports both pass.
+- Source torrent remains available for seeding.
+- Gateway login/logout, HTTPS forwarding, upload, and browser websocket tests pass.
+- Restart/dependency recovery passes.
 - No service exposes an undocumented port.
+- Real VPN egress, kill switch, port forwarding, NAS mounts, and Jellyfin remain host acceptance tests, not CI claims.
 
-## Environment and portability CI
+## Portability and compatibility CI
 
-Future CI must include:
+Future CI covers:
 
-- Compose parsing for every mode using only its example environment.
-- Negative tests proving disabled modules need no variables.
-- Custom bind address and nondefault-port rendering.
-- Custom absolute storage-path rendering.
-- UID/GID, umask, and timezone overrides.
-- Secret-file path behavior and redacted failures.
-- nonexistent, unreadable, non-writable, overlapping, and cross-device path preflight fixtures.
-- reverse-proxy HTTP versus HTTPS/secure-cookie validation.
-- external versus managed qBittorrent configurations.
-- browser enabled and disabled.
-- Jellyfin enabled and disabled.
-- compatibility fixtures for existing environment-variable names.
-- a repository scan rejecting developer home paths, private IP examples, populated credentials, and moving release tags in stable manifests.
-- container smoke confirming non-root identity, mounts, health, and absence of unnecessary capabilities.
-- supported CPU architecture build tests once the architecture support decision is made.
+- every mode using only its declared example;
+- negative tests for disabled-service variables;
+- custom ports, bind addresses, storage paths, UID/GID, umask, and timezone;
+- secret-file and redacted-error behavior;
+- missing/unreadable/unwritable/overlapping/cross-device paths;
+- HTTP versus HTTPS/trusted-proxy validation;
+- external and managed qBittorrent;
+- browser/Jellyfin enabled and disabled;
+- existing environment-variable compatibility;
+- repository scan for developer paths, private examples, secrets, and moving stable tags;
+- non-root identities, exact mounts, capabilities, networks, and health;
+- Portal/module contract versions and failure injection;
+- supported CPU architectures once approved.
 
-## Evidence labels
-
-Release reports must distinguish:
-
-- configuration parsed;
-- preflight passed;
-- unit/integration tests passed;
-- containers started in CI;
-- published artifact verified;
-- shadow deployment tested;
-- NAS deployment tested;
-- real VPN/qBittorrent/Jellyfin/provider workflow tested.
-
-One label must never be used as proof of another.
+Evidence labels distinguish parsed, preflighted, tested, container-started, artifact-published, shadow-tested, NAS-tested, and live-integration-tested.

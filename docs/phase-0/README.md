@@ -1,39 +1,48 @@
 # Phase 0 architecture package
 
-Status: Accepted architecture; implementation pending  
+Status: Revised architecture accepted; implementation pending  
 Date: 2026-10-26  
-Primary repository: ItsFoxxin/Media_Downloader
+Current primary planning repository: ItsFoxxin/Media_Downloader  
+Target canonical repository: ItsFoxxin/FoxDen_Media
 
-This package records the approved target architecture for Fox Den Media. It is documentation only. It does not change application code, Compose topology, databases, container images, or a live deployment.
+This package records the approved modular-monorepo direction. It is documentation only.
 
-## Approved direction
+## Current decision
 
-Fox Den Media uses Option C with contract-only Option D:
+ADR 0002 supersedes ADR 0001:
 
-- Media_Downloader owns Movies/TV and the integrated deployment.
-- Music_Downloader remains the authoritative, independently releasable Music application.
-- The integrated deployment will consume a pinned, versioned Music image rather than maintain a copied Music source tree.
-- Modules communicate through documented HTTP, health, authentication, mount, and configuration contracts. They never share application databases.
-- Shared code will be introduced only when multiple independently owned consumers justify it.
+- one canonical Fox Den Media repository;
+- Music_Downloader dev is the authoritative Music foundation;
+- unique Movies/TV, Portal, ingress, and infrastructure history comes from Media_Downloader dev;
+- obsolete Media music source is excluded;
+- Portal is independent of Music and Movies/TV availability;
+- separate runtime processes, databases, workers, mounts, and security boundaries remain;
+- modular environment-driven deployment modes remain mandatory.
 
 ## Documents
 
-- ADR 0001: repository ownership, versioning, modular deployment, and portable configuration.
-- Compatibility matrix: current and target component compatibility.
-- Music integration contract: integrations that must survive removal of the bundled Music tree and Music image release gates.
-- NAS inventory checklist: read-only data to collect before migration planning.
-- Deployment acceptance: testable requirements for Music Only, Movies/TV Only, and Full Managed modes.
-- Phase 1 and Phase 2 plan: proposed work packages and decisions still requiring approval.
+- ADR 0002: accepted monorepo, Portal, runtime, versioning, and portability decision.
+- Compatibility matrix: present repository facts and target monorepo contracts.
+- Repository consolidation strategy: rename and filtered-history approach, acceptance gates, and rollback.
+- Source ownership map: canonical locations and responsibilities.
+- Deployment architecture: Portal, ingress, modules, containers, networks, and modes.
+- Music integration preservation: behavior that the move into apps/music must retain.
+- NAS inventory checklist: read-only preparation; it remains unfilled.
+- Deployment-mode acceptance: testable mode and Portal requirements.
+- Phase 1/2 plan and decision register: proposed work only.
+
+ADR 0001 is retained as superseded decision history.
 
 ## Phase boundary
 
-Phase 0 permits documentation and analysis only. It expressly does not authorize:
+This revision does not authorize:
 
-- removing or updating bundled Music source;
-- changing Compose services, profiles, networks, ports, mounts, or gateway routes;
-- modifying Music_Downloader or its active bug-fix and release work;
-- migrating or opening a production database with a newer application;
-- modifying qBittorrent, Gluetun, Jellyfin, reverse proxy, NAS files, or a deployed container;
-- publishing or deploying a replacement stack.
+- repository rename, transfer, archive, deletion, or history import;
+- merging or closing the active Music pull request;
+- changing default branches or branch protection;
+- moving Music source or importing Media source;
+- creating or wiring the Portal;
+- changing Compose, images, ports, mounts, secrets, or authentication;
+- database migration or NAS deployment.
 
-Phase 1 and Phase 2 require a separate approval after review of this package.
+Phase 1 and Phase 2 require separate approval.

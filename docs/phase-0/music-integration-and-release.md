@@ -1,158 +1,82 @@
-# Music integration preservation and image release criteria
+# Music preservation and monorepo migration criteria
 
-Status: Phase 0 contract  
-Music_Downloader remains independently owned. This document does not authorize changes to it.
+Status: Revised Phase 0 contract  
+Music_Downloader remains independently owned until consolidation gates pass.
 
-## Music-specific integrations currently present in Media_Downloader
+## Authoritative source
 
-The following behavior must be represented by a released Music image or an explicit Media-side integration contract before the copied music directory can be removed.
+Music_Downloader dev at the approved independent release checkpoint is the only Music implementation source.
 
-### Build and runtime
+Media_Downloader music is excluded. It may be referenced only to identify integration behavior that Media currently supplies around Music.
 
-- Music backend build context and application package.
-- fox-den-music-web and fox-den-music-worker commands.
-- Non-root UID/GID build and runtime behavior.
-- Read-only application filesystem, dropped capabilities, no-new-privileges, init process, tmpfs, memory limits, health checks, and stop grace periods.
-- Music web restricted from the real library.
-- Music worker as the only Music service with a writable /music bind.
+## Behavior to preserve during path migration
 
-### Persistent state and mounts
+- Music web and worker commands and separation.
+- Web exclusion from the writable Music library.
+- Worker ownership of Music import and scanning.
+- secure archive and audio validation.
+- MusicBrainz resolution, tagging, year and identifier behavior.
+- request workflow, acquisition adapters, browser handoff, and server inbox.
+- single-track and complete-release semantics.
+- duplicate detection, no-overwrite behavior, and atomic publishing.
+- schema migration, job/event/import history, library inventory, and interrupted-job recovery.
+- optional Jellyfin refresh with retryable failure.
+- non-root/read-only container hardening, health checks, and stop behavior.
+- documented environment variables and secret-file behavior.
+- frontend assets, responsive browser behavior, accessibility checks, and tests.
 
-- /config and foxden-music.db ownership.
-- /staging job workspace and upload temporary directory.
-- /downloads completed-download inbox.
-- /music final library and /music/.imports atomic-publication workspace.
-- Browser /config profile and /downloads handoff.
-- The requirement that config is suitable for local SQLite locking and that atomic Music publication remains on one compatible filesystem.
+## Integration behavior to preserve from Media
 
-### Environment contract
+- authenticated same-origin browser routing in integrated mode;
+- upload buffering and long timeout behavior;
+- browser websocket forwarding;
+- shared platform navigation and session behavior, moved to Portal ownership;
+- Compose mount contracts and health dependencies that remain valid;
+- full-stack CI coverage;
+- safe human interaction for login, CAPTCHA, consent, and selection.
 
-- Application environment, logging, umask, upload and archive safety limits.
-- ffprobe and ffmpeg paths and timeouts.
-- MusicBrainz, Cover Art Archive, matching thresholds, artwork limits, and metadata caching.
-- acquisition/provider and request-workflow settings.
-- download inbox settling, size, recursion, move, and auto-import behavior.
-- browser home, route, profile, UID/GID, timezone, and kiosk behavior.
-- Music library scanning, storage snapshots, polling, heartbeat, and inventory batching.
-- Jellyfin URL, API key or key file, and timeout.
-- CSRF secret or secret file.
-- Optional Spotify, Chromaprint, and AcoustID configuration when supported by the selected Music release.
+Movies/TV authentication is not preserved as the platform authority. Portal replaces that responsibility.
 
-### Gateway and user interface
+## Migration gates
 
-- Root gateway route to Music web.
-- /server-browser same-origin route and websocket forwarding.
-- Long upload/download timeouts and disabled proxy request buffering.
-- Media-session protection in Full mode without requiring Media authentication in Music Only mode.
-- Relative application links that work behind the gateway and supported reverse proxies.
-- Browser handoff and download-inbox behavior used from desktop and mobile.
+### Independent Music gate
 
-### Tests, tools, and documentation
+- active bug-fix work completed under its own review;
+- dependency audit passes;
+- dev/release CI is green;
+- version, schema, environment contract, release notes, and rollback requirements are recorded;
+- exact authoritative commit approved.
 
-- Music regression tests currently executed from the Media CI suite.
-- Compose topology and release-version checks.
-- Container smoke tests for non-root web and worker processes.
-- Gateway and browser route smoke tests.
-- Music environment documentation and migration guidance.
-- Compatibility for current service names where scripts or operational documentation depend on them.
+### Path-move gate
 
-### Security and functional invariants
+- verified repository mirror exists;
+- migration branch starts at the authoritative commit;
+- history-preserving moves place code under apps/music;
+- no generated data, credentials, media, or local environment enters the repository;
+- imports/build contexts/workflows/docs update mechanically;
+- old and new test results are compared;
+- no schema migration occurs because of the move.
 
-- secure archive validation;
-- readable-audio and metadata validation;
-- no direct unvalidated writes to the final library;
-- no-overwrite duplicate handling;
-- atomic publication;
-- existing import history and schema migration;
-- retryable Jellyfin failure after successful import;
-- incomplete browser downloads and partial files rejected;
-- browser isolation and visible human handling of logins, consent, CAPTCHA, and selection.
+### Portal integration gate
 
-Removal gate: the copied tree remains until all items above are mapped to a released artifact or Media-owned contract and Full integration tests pass.
+- Music exposes versioned health/capability/activity endpoints without secrets or host paths;
+- integrated identity assertions are validated;
+- Music Only does not require Movies/TV;
+- Portal unavailability does not grant unauthenticated module access;
+- Portal handles Music unavailable/disabled without failure;
+- direct database access is absent.
 
-## Acceptance criteria for a released Music image
+### Deployment gate
 
-### Source and version
+- Music Only and Full modes pass environment, preflight, container, gateway, browser, database-copy, and filesystem fixtures;
+- existing variables remain compatible;
+- no production database or NAS path is used;
+- manual NAS/provider/Jellyfin evidence remains separately labeled.
 
-- Built by Music_Downloader CI from an exact reviewed release commit.
-- Semantic version agrees across package metadata, runtime API, release notes, and image tag.
-- The source tag is immutable.
-- OCI labels record source repository, commit, version, creation time, and license information where available.
-- Published image digest is recorded in release output.
-- Media pins the digest; latest is not used for a stable integration.
+## Release model after consolidation
 
-### CI and security
+Music no longer requires a separately maintained product repository. It remains a separately built process/image within the monorepo.
 
-- Validation, regression tests, packaging, container smoke, supported Python release tests, browser tests, and the main release gate all pass.
-- The existing dependency vulnerability audit failure is resolved. The audit job must pass against the final locked/resolved runtime dependencies; skipping it or allowing the main gate to remain red is not acceptance.
-- Any dependency change made to resolve the audit receives regression coverage and release-note attribution.
-- A container vulnerability scan reports no unapproved critical vulnerabilities. Severity policy and any time-limited exception require an explicit recorded decision.
-- The image contains no repository credential, populated environment file, provider secret, API key, browser profile, media file, or developer-specific path.
-- Software-bill-of-materials and provenance/signature policy is decided and then enforced consistently.
+The platform release pins the Music image produced from the same commit. Music schema and contract versions remain independently visible for migration and diagnostics.
 
-### Runtime isolation
-
-- Web and worker start as the configured non-root UID/GID.
-- Application containers remain read-only apart from declared mounts and tmpfs.
-- Web has no writable real Music mount.
-- Worker has only the Music mounts and secrets it requires.
-- Neither service receives Docker socket, privileged mode, host networking, devices, or unnecessary capabilities.
-- Health checks fail clearly for unreadable config, staging, heartbeat, database, or Music mounts without exposing secrets.
-
-### Database and upgrade safety
-
-- Fresh database initialization passes.
-- Supported schema-2 to schema-3 migration is tested on a representative copy.
-- Migration is serialized when web and worker start together.
-- Existing jobs, acquisition history, import history, candidates, duplicate ledger, and inventory survive.
-- Unsupported future/older schemas fail before job claiming or library writes.
-- Release notes state backup, forward-migration, and rollback requirements.
-- No release test writes to production data.
-
-### Configuration contract
-
-- The image accepts the documented existing Music variables required for migration.
-- Direct-value and file-based secret behavior is documented.
-- Missing optional integrations leave them disabled.
-- Invalid URLs, ports, credentials-file paths, permissions, and overlapping storage layouts produce actionable redacted errors.
-- No qBittorrent, Gluetun, Media, Movies, or TV setting is required to start Music.
-- Environment overrides are exercised by CI.
-- The image works without source-code or Compose editing in the supported Music Only example.
-
-### Functional verification
-
-Automated tests must cover:
-
-- direct upload and server inbox;
-- single-track and complete-release imports;
-- ambiguous/low-confidence review;
-- archive protections and unexpected file rejection;
-- tagging, year, recording/release identifiers, and track-total behavior;
-- duplicates and existing-destination refusal;
-- atomic publish and interrupted-job recovery;
-- library scan and history;
-- browser-disabled operation;
-- optional browser route when enabled;
-- Jellyfin-disabled operation and a mocked refresh path.
-
-Manual release evidence must clearly separate:
-
-- CI-validated behavior;
-- local container validation;
-- real-provider validation;
-- real Jellyfin validation;
-- NAS deployment validation.
-
-A real NAS/provider/Jellyfin test may remain a post-publication acceptance activity, but the image must not be described as live-verified until that test occurs.
-
-## Media consumption gate
-
-Before Media changes from bundled source to the released image:
-
-1. Record Music version, digest, commit, schema range, and configuration-contract revision.
-2. Run Music Only acceptance against the image.
-3. Run Full mode integration tests using the image, not a local Music build context.
-4. Confirm gateway auth, browser, upload, worker health, library mounts, and Jellyfin configuration.
-5. Confirm existing Media environment variables either remain accepted or have a tested compatibility mapping.
-6. Keep the bundled source available for rollback until the image-based stack passes a shadow rehearsal.
-7. Obtain explicit approval for source-tree removal and deployment migration.
+Historical standalone releases and their upgrade paths remain documented.

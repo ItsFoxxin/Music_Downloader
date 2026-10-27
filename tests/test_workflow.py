@@ -11,6 +11,7 @@ from app.config import Settings
 from app.db import Store
 from app.files import audit, contained, digest, import_files, relative_parts, validate
 from app.main import create_app
+from app.platform_summary import module_summary
 from app.worker import Worker
 
 
@@ -235,6 +236,41 @@ def test_tampered_session_refused(settings):
     with TestClient(create_app(settings,start_worker=False)) as client:
         client.cookies.set('foxden_session','12345.fake.signature')
         assert client.get('/api/status').status_code==401
+
+
+def test_platform_summary_is_public_bounded_and_contains_no_records(settings):
+    app = create_app(settings, start_worker=False)
+    with TestClient(app) as client:
+        app.state.store.create_request('Movie', 'https://example.invalid/private?token=secret',
+                                       'A private requested title')
+        app.state.store.enqueue('add', {'magnet': 'magnet:?xt=urn:btih:' + 'a' * 40,
+                                        'tracker_token': 'must-not-leak'})
+        response = client.get('/api/platform/v1/summary')
+        assert response.status_code == 200
+        summary = response.json()
+        assert summary['contract_version'] == '1.0'
+        assert summary['module_id'] == 'media'
+        assert summary['module_version'] == '0.4.1'
+        assert summary['health']['status'] == 'healthy'
+        assert {item['id'] for item in summary['capabilities']} == {
+            'media.requests', 'media.library', 'media.acquisition', 'media.browser'}
+        capabilities = {item['id']: item['enabled'] for item in summary['capabilities']}
+        assert capabilities['media.acquisition'] is False
+        assert capabilities['media.browser'] is True
+        assert summary['activity'] == []
+        serialized = response.text
+        for private in ('example.invalid', 'token=secret', 'must-not-leak', 'magnet:',
+                        'A private requested title', str(settings.staging),
+                        str(settings.media), settings.token):
+            assert private not in serialized
+
+
+def test_platform_summary_reports_worker_failure_without_private_detail():
+    summary = module_summary(version='0.4.1', worker_available=False,
+                             qbit_enabled=True, browser_enabled=False)
+    assert summary['health'] == {
+        'status': 'unhealthy', 'summary': 'Movies & TV worker is unavailable.'}
+    assert summary['activity'] == []
 
 
 def test_media_request_name_attach_and_review(settings, movie):

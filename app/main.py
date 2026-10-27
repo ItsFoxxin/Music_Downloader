@@ -18,6 +18,7 @@ from pydantic import BaseModel, Field
 from .config import Settings
 from .db import Store
 from .files import contained, linked, target
+from .platform_summary import module_summary
 from .qbit import Qbit
 from .worker import Worker
 from .version import __version__
@@ -156,6 +157,12 @@ def create_app(settings=None, *, start_worker=True, qbit=None):
     def health():
         alive = not start_worker or (worker.thread is not None and worker.thread.is_alive())
         return JSONResponse({"status": "ok" if alive else "worker unavailable"}, status_code=200 if alive else 503)
+
+    @app.get("/api/platform/v1/summary")
+    def platform_summary():
+        alive = not start_worker or (worker.thread is not None and worker.thread.is_alive())
+        return module_summary(version=__version__, worker_available=alive,
+                              qbit_enabled=bool(s.qbit_url), browser_enabled=bool(s.media_browser_home_url))
 
     @app.get("/")
     def index():

@@ -4,6 +4,11 @@
 
 ### Added
 
+- Real Movies/TV module-summary endpoint implementing Portal contract v1 with
+  sanitized health and capabilities. Activity remains withheld until trusted
+  Portal-to-module authentication is implemented.
+- Cross-component contract tests that validate the real Movies/TV response with
+  the Portal's strict contract model.
 - Phase 1A Portal foundation with a responsive platform dashboard, isolated
   module status aggregation, and versioned module contracts.
 - Portal-owned local authentication, protected first-run administrator setup,

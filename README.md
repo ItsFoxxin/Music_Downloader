@@ -6,6 +6,11 @@ One self-hosted Docker project for **music, movies, and TV**. The existing Fox D
 Music downloader lives alongside a new qBittorrent dashboard and a reviewed,
 verified staging-to-library workflow. One gateway and one login connect both.
 
+The `feature/portal-foundation` branch contains the isolated Phase 1A Portal
+`0.1.0` foundation for the approved modular-monorepo direction. It is not wired
+into this release's production Compose stack. Start review with
+[`docs/phase-1a/README.md`](docs/phase-1a/README.md).
+
 ## What works in this development release
 
 - Music dashboard, acquisition queue, human-controlled downloader browser,
@@ -174,6 +179,9 @@ python -m pip install -r requirements-dev.txt
 python -m pytest tests -q
 python scripts/demo.py
 ```
+
+Portal-only development and its mocked demonstration are documented in
+[`docs/phase-1a/demo.md`](docs/phase-1a/demo.md).
 
 The local demo binds only to `127.0.0.1`, prints a temporary access token, generates
 short sample movies, and uses a fake qBittorrent adapter. It never downloads a torrent

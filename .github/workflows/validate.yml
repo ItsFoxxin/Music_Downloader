@@ -63,7 +63,7 @@ jobs:
           cache: pip
           cache-dependency-path: '**/requirements*.txt'
       - run: sudo apt-get update && sudo apt-get install -y ffmpeg
-      - run: python -m pip install -r requirements-dev.txt -r music/backend/requirements-dev.txt
+      - run: python -m pip install -r requirements-dev.txt -r music/backend/requirements-dev.txt -e "portal[test]"
       - run: python -m pip check
       - name: Movie and TV workflow tests
         run: python -m pytest tests -q --junitxml=reports/media.xml
@@ -71,9 +71,11 @@ jobs:
         env:
           PYTHONPATH: music/backend/src
         run: python -m pytest -c music/backend/pyproject.toml music/backend/tests -q --junitxml=reports/music.xml
+      - name: Portal foundation tests
+        run: python -m pytest -c portal/pyproject.toml portal/tests -q --junitxml=reports/portal.xml
       - name: Reject unexpected skipped stable tests
         if: github.base_ref == 'master' || github.base_ref == 'main' || github.ref == 'refs/heads/master' || github.ref == 'refs/heads/main' || inputs.strict == true
-        run: python scripts/check_release.py --reports reports/media.xml reports/music.xml
+        run: python scripts/check_release.py --reports reports/media.xml reports/music.xml reports/portal.xml
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -99,6 +101,8 @@ jobs:
           else
             python scripts/smoke_containers.py
           fi
+      - name: Portal non-root read-only container
+        run: python portal/scripts/smoke_container.py
   gate:
     name: CI gate
     if: always()

@@ -1,0 +1,38 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "foxden-portal"
+version = "0.1.0"
+description = "Independent portal and authentication foundation for Fox Den Media"
+requires-python = ">=3.12"
+dependencies = [
+  "argon2-cffi==25.1.0",
+  "authlib==1.6.5",
+  "fastapi==0.141.1",
+  "httpx==0.28.1",
+  "jinja2==3.1.6",
+  "python-multipart==0.0.32",
+  "uvicorn==0.52.3",
+]
+
+[project.optional-dependencies]
+test = ["pytest==9.1.1"]
+
+[project.scripts]
+foxden-portal = "foxden_portal.app:run"
+foxden-portal-admin = "foxden_portal.cli:main"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+foxden_portal = ["templates/*.html", "static/*.css"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra"

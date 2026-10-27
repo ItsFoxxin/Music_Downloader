@@ -1,0 +1,12 @@
+{% extends "base.html" %}
+{% block title %}Accounts · Fox Den Media{% endblock %}
+{% block content %}
+<p class="eyebrow">Administration</p><h1>Portal accounts</h1>
+{% if error %}<div class="notice error" role="alert">{{ error }}</div>{% endif %}
+{% if success %}<div class="notice success" role="status">{{ success }}</div>{% endif %}
+<div class="admin-grid">
+  <section class="panel"><h2>Existing accounts</h2><ul class="account-list">{% for account in users %}<li><div><strong>{{ account.display_name }}</strong><span>@{{ account.username }}</span></div><span class="state-badge">{{ account.role }}</span></li>{% endfor %}</ul></section>
+  <section class="panel"><h2>Create local account</h2><form method="post" action="/admin/users" class="stack"><input type="hidden" name="csrf" value="{{ csrf }}"><label>Username<input name="username" required></label><label>Display name<input name="display_name"></label><label>Temporary password<input name="password" type="password" minlength="12" required></label><label>Role<select name="role"><option value="user">User</option><option value="admin">Administrator</option></select></label><button class="primary">Create account</button></form></section>
+  <section class="panel"><h2>Reset local password</h2><p>This revokes every existing session for that account.</p><form method="post" action="/admin/users/reset-password" class="stack"><input type="hidden" name="csrf" value="{{ csrf }}"><label>Username<input name="username" required></label><label>New password<input name="password" type="password" minlength="12" required></label><button>Reset password</button></form></section>
+</div>
+{% endblock %}

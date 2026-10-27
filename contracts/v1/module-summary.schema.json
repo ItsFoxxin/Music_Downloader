@@ -1,0 +1,77 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://foxden.media/contracts/v1/module-summary.schema.json",
+  "title": "Fox Den Media module summary v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "contract_version",
+    "module_id",
+    "module_name",
+    "module_version",
+    "health",
+    "capabilities",
+    "activity"
+  ],
+  "properties": {
+    "contract_version": { "const": "1.0" },
+    "module_id": { "type": "string", "minLength": 1, "maxLength": 40 },
+    "module_name": { "type": "string", "minLength": 1, "maxLength": 80 },
+    "module_version": { "type": "string", "minLength": 1, "maxLength": 40 },
+    "health": { "$ref": "#/$defs/health" },
+    "capabilities": {
+      "type": "array",
+      "maxItems": 50,
+      "items": { "$ref": "#/$defs/capability" }
+    },
+    "activity": {
+      "type": "array",
+      "maxItems": 20,
+      "items": { "$ref": "#/$defs/activity" }
+    }
+  },
+  "$defs": {
+    "health": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "summary"],
+      "properties": {
+        "status": { "enum": ["healthy", "unhealthy"] },
+        "summary": { "type": "string", "minLength": 1, "maxLength": 200 }
+      }
+    },
+    "capability": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "label", "enabled"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 80,
+          "pattern": "^[a-z0-9][a-z0-9._-]*$"
+        },
+        "label": { "type": "string", "minLength": 1, "maxLength": 120 },
+        "enabled": { "type": "boolean" }
+      }
+    },
+    "activity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "kind", "title", "status", "occurred_at"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "maxLength": 100 },
+        "kind": { "type": "string", "minLength": 1, "maxLength": 60 },
+        "title": { "type": "string", "minLength": 1, "maxLength": 160 },
+        "status": { "type": "string", "minLength": 1, "maxLength": 60 },
+        "occurred_at": { "type": "string", "format": "date-time" },
+        "path": {
+          "type": ["string", "null"],
+          "maxLength": 300,
+          "pattern": "^/(?!/)(?!.*\\.\\.).*$",
+          "default": null
+        }
+      }
+    }
+  }
+}

@@ -103,6 +103,8 @@ jobs:
           fi
       - name: Portal non-root read-only container
         run: python portal/scripts/smoke_container.py
+      - name: Portal ingress and missing-module isolation
+        run: python scripts/smoke_portal_ingress.py
   gate:
     name: CI gate
     if: always()

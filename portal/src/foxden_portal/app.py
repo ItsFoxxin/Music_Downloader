@@ -8,7 +8,7 @@ import os
 from typing import Annotated
 
 from fastapi import FastAPI, Form, HTTPException, Request
-from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
@@ -110,6 +110,13 @@ def create_app(settings: Settings | None = None, module_client: ModuleClient | N
     def health():
         return {"status": "healthy", "version": __version__,
                 "setup_required": settings.local_enabled and not store.has_admin()}
+
+    @app.get("/api/platform/v1/session")
+    def ingress_session(request: Request):
+        """Minimal same-origin session check for Nginx auth_request."""
+        if not request.state.session:
+            return Response(status_code=401)
+        return Response(status_code=204)
 
     @app.get("/setup", response_class=HTMLResponse)
     def setup_page(request: Request):

@@ -9,6 +9,11 @@
   Portal-to-module authentication is implemented.
 - Cross-component contract tests that validate the real Movies/TV response with
   the Portal's strict contract model.
+- Accepted and implemented the review configuration for the existing Nginx
+  gateway to become the sole ingress, with Portal as an independent session
+  authority and optional-module failure isolation.
+- Container regression coverage for Portal availability with Music, Movies/TV,
+  and the contained browser absent, plus client identity-header stripping.
 - Phase 1A Portal foundation with a responsive platform dashboard, isolated
   module status aggregation, and versioned module contracts.
 - Portal-owned local authentication, protected first-run administrator setup,

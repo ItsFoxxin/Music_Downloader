@@ -20,15 +20,18 @@ This keeps the initial endpoint no more sensitive than a conventional service
 health/capability response while allowing the real Movies/TV process to validate
 against Portal contract v1.
 
-## Next approval boundary
+## Approved ingress direction
 
-Activity summaries and unified module navigation require a trusted ingress and
-identity path. Before adding them, approve:
+ADR 0003 records that the existing Nginx gateway becomes the sole Fox Den ingress
+while Portal remains an independent container. The review configuration makes
+Portal the platform root and session authority, uses deferred optional upstreams,
+strips client identity headers, preserves upload/WebSocket proxy behavior, and
+returns a generic 503 for unavailable modules.
 
-1. dedicated ingress versus extending the existing gateway process;
-2. HS256 contract v1 versus asymmetric internal assertion signing;
-3. the canonical same-origin Movies/TV route;
-4. which activity fields may cross the module boundary.
+The remaining approval boundary is the integrity-protected Portal-to-module
+identity assertion, role propagation, and which activity fields may cross that
+authenticated boundary.
 
-No production Compose, gateway routing, NAS state, Music source, or application
-database migration is changed by this slice.
+Production Compose and the active gateway configuration remain unchanged during
+this review slice. No NAS state, Music source, or application database migration
+is changed.

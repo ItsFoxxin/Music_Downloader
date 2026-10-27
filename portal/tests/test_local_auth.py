@@ -97,3 +97,12 @@ def test_admin_can_create_and_reset_local_account(tmp_path):
 def test_csrf_is_required(local_client):
     bootstrap_admin(local_client)
     assert local_client.post("/logout", data={"csrf": "forged"}).status_code == 403
+
+
+def test_ingress_session_check_exposes_no_identity_or_secret(local_client):
+    anonymous = local_client.get("/api/platform/v1/session")
+    assert anonymous.status_code == 401 and anonymous.content == b""
+    bootstrap_admin(local_client)
+    authenticated = local_client.get("/api/platform/v1/session")
+    assert authenticated.status_code == 204 and authenticated.content == b""
+    assert "x-foxden-identity" not in authenticated.headers

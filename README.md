@@ -1,6 +1,6 @@
 # Fox Den Media
 
-Current development release: **0.4.0**. See [CHANGELOG.md](CHANGELOG.md).
+Current development release: **0.4.1**. See [CHANGELOG.md](CHANGELOG.md).
 
 One self-hosted Docker project for **music, movies, and TV**. The existing Fox Den
 Music downloader lives alongside a new qBittorrent dashboard and a reviewed,

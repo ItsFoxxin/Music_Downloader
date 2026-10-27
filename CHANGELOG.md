@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.4.1 - 2026-10-27
+
+### Added
+
+- Phase 1A Portal foundation with a responsive platform dashboard, isolated
+  module status aggregation, and versioned module contracts.
+- Portal-owned local authentication, protected first-run administrator setup,
+  optional OIDC/hybrid authentication, and mocked Music and Movies/TV adapters.
+- Portal threat model, Authentik/Caddy integration plan, mocked demonstration,
+  and non-root read-only container validation in layered CI.
+
+### Boundary
+
+- Portal remains isolated from production Compose, real module databases,
+  production gateway routing, and NAS state until Phase 1B is reviewed.
+- No Music source consolidation or production deployment is included.
+
 ## 0.4.0 - 2026-10-15
 
 ### Added

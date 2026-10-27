@@ -36,6 +36,8 @@ headers from every client request. Portal is the only holder of an Ed25519
 private key. A private Nginx auth subrequest validates the Portal session and
 returns a 30–60 second assertion bound to either the Music or Movies/TV audience.
 Nginx forwards it only to that module and never mints or returns it to a browser.
+Every Portal auth subrequest has a two-second connect/read/send bound so a Portal
+outage rejects protected module access promptly instead of hanging the route.
 Modules independently verify trusted public keys, algorithm, issuer, audience,
 use, scope, time claims, token ID, signature, and replay state.
 

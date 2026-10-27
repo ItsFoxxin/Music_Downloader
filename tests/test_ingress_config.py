@@ -32,6 +32,9 @@ def test_ingress_strips_identity_headers_and_preserves_transport_controls():
     assert "proxy_set_header X-FoxDen-Identity $foxden_music_identity;" in CONFIG
     assert "proxy_set_header X-FoxDen-Identity $foxden_media_identity;" in CONFIG
     assert CONFIG.count("error_page 500 = @auth_unavailable;") == 2
+    assert CONFIG.count("proxy_connect_timeout 2s;") == 3
+    assert CONFIG.count("proxy_read_timeout 2s;") == 3
+    assert CONFIG.count("proxy_send_timeout 2s;") == 3
     assert "proxy_request_buffering off;" in CONFIG
     assert "proxy_set_header Upgrade $http_upgrade;" in CONFIG
     assert "proxy_set_header Connection $connection_upgrade;" in CONFIG

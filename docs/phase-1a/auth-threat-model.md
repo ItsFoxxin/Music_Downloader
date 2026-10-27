@@ -52,10 +52,10 @@ administrator group configuration.
 
 ### Identity-header spoofing
 
-Control: public Portal rejects X-FoxDen-Identity. Future ingress must remove all
-client-supplied identity headers. Modules accept only signed, short-lived,
-audience-bound assertions from an isolated key, never Authentik forward-auth
-headers directly.
+Control: public Portal rejects X-FoxDen-Identity. The review ingress removes all
+client-supplied Fox Den and Authentik identity headers. Portal alone signs
+short-lived, audience-bound Ed25519 assertions; modules verify public keys and
+replay state and never trust Authentik forward-auth headers directly.
 
 ### Compromised or offline module
 
@@ -74,12 +74,11 @@ substitutes for Portal authentication or internal assertions.
 
 Control: direct/file configuration is mutually exclusive; redacted config output;
 no credentials in URLs; no tokens in module status; no raw exception messages;
-minimal mounts; separate session and assertion secrets.
+minimal mounts; separate session secrets and Ed25519 signing-key files.
 
 ## Residual Phase 1A limitations
 
-- real ingress assertion delivery is intentionally not connected;
 - live Authentik metadata and logout behavior are not tested;
 - password reset email is not implemented; local admin and offline recovery are;
 - account disable/delete UI and audit log are later administration work;
-- key rotation and asymmetric internal assertions require a later design decision.
+- production activation and live key rotation remain separately gated.

@@ -11,6 +11,7 @@ from fastapi import FastAPI, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from foxden_identity import IdentityError, SigningKey
 
 from . import __version__
 from .auth import AuthError, AuthService, RateLimited
@@ -32,7 +33,23 @@ def create_app(settings: Settings | None = None, module_client: ModuleClient | N
     settings = settings or Settings.from_env()
     store = PortalStore(settings.database_path)
     auth = AuthService(settings, store)
-    client = module_client or ModuleClient(settings.module_timeout_seconds)
+    signer = None
+    if settings.identity_private_key_path:
+        signer = SigningKey.from_file(
+            settings.identity_private_key_path, kid=settings.identity_signing_kid,
+            issuer=settings.identity_issuer, lifetime=settings.identity_lifetime_seconds,
+        )
+
+    def service_assertion(audience: str) -> str:
+        if not signer:
+            raise IdentityError("Internal identity signing is not configured.")
+        return signer.issue(audience=audience, subject="portal-activity", username="portal-activity",
+                            roles=[], scopes=["activity:read"], token_use="service")
+
+    client = module_client or ModuleClient(
+        settings.module_timeout_seconds,
+        service_assertion=service_assertion if signer else None,
+    )
     registry = ModuleRegistry(settings.modules, client)
 
     @asynccontextmanager
@@ -47,6 +64,7 @@ def create_app(settings: Settings | None = None, module_client: ModuleClient | N
     app.state.auth = auth
     app.state.registry = registry
     app.state.oidc = oidc_client or OIDCClient(settings, store)
+    app.state.identity_signer = signer
     templates = Jinja2Templates(directory=ROOT / "templates")
     app.mount("/static", StaticFiles(directory=ROOT / "static"), name="static")
 
@@ -112,11 +130,22 @@ def create_app(settings: Settings | None = None, module_client: ModuleClient | N
                 "setup_required": settings.local_enabled and not store.has_admin()}
 
     @app.get("/api/platform/v1/session")
-    def ingress_session(request: Request):
-        """Minimal same-origin session check for Nginx auth_request."""
+    def ingress_session(request: Request, audience: str | None = None):
+        """Private Nginx auth_request target; never returns assertions to browsers."""
+        if request.headers.get("X-FoxDen-Ingress") != "1":
+            raise HTTPException(404)
         if not request.state.session:
             return Response(status_code=401)
-        return Response(status_code=204)
+        headers = {}
+        if audience is not None:
+            if audience not in {"music", "media"} or not signer:
+                return Response(status_code=503)
+            session = request.state.session
+            headers[IDENTITY_HEADER] = signer.issue(
+                audience=audience, subject=session["user_id"], username=session["username"],
+                roles=[session["role"]], scopes=["module:access"], token_use="user",
+            )
+        return Response(status_code=204, headers=headers)
 
     @app.get("/setup", response_class=HTMLResponse)
     def setup_page(request: Request):

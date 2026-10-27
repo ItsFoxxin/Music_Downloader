@@ -15,7 +15,6 @@ from foxden_portal.modules import ModuleClient
 
 BOOTSTRAP = "bootstrap-secret-for-tests-only-123456789"
 PORTAL_SECRET = "portal-secret-for-tests-only-123456789012"
-ASSERTION_SECRET = "assertion-secret-for-tests-only-123456789"
 PASSWORD = "Correct-Horse-Battery-7!"
 
 
@@ -31,8 +30,9 @@ def settings(tmp_path: Path, modules: tuple[ModuleConfig, ...] = (), auth_mode: 
         oidc_client_secret="test-client-secret-123456" if auth_mode in {"oidc", "hybrid"} else None,
         oidc_redirect_uri="http://testserver/auth/oidc/callback" if auth_mode in {"oidc", "hybrid"} else None,
         oidc_scopes=("openid", "profile", "email"), oidc_allowed_groups=(), oidc_admin_groups=("foxden-admins",),
-        oidc_logout="local", internal_assertion_secret=ASSERTION_SECRET,
-        internal_assertion_issuer="foxden-portal", internal_assertion_seconds=60,
+        oidc_logout="local", identity_private_key_path=None,
+        identity_signing_kid="foxden-test-1", identity_issuer="foxden-portal",
+        identity_lifetime_seconds=45,
     )
 
 

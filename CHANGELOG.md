@@ -4,6 +4,12 @@
 
 ### Added
 
+- Ed25519-signed, audience-bound internal identities with Portal-only private
+  keys, module public-key verification, replay protection, and documented
+  zero-downtime key rotation.
+- Separate service-scoped Portal activity aggregation with a sanitized
+  Movies/TV activity contract; restricted users remain read-only while
+  Portal-originated writes require administrator role.
 - Real Movies/TV module-summary endpoint implementing Portal contract v1 with
   sanitized health and capabilities. Activity remains withheld until trusted
   Portal-to-module authentication is implemented.

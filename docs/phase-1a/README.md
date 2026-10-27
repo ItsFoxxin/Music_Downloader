@@ -26,20 +26,22 @@ read any NAS state.
 - `demo.md`: isolated mocked-service demonstration;
 - `../../contracts/v1`: versioned interoperable contracts.
 
+## Decisions resolved in Phase 1B
+
+- ADR 0003 selected the existing Nginx gateway as the sole ingress while Portal
+  remains independent.
+- Internal identity moved from the Phase 1A HS256 prototype to Portal-only
+  Ed25519 signing and module public-key verification.
+- Movies/TV is the first real integration; canonical routes remain `/music/`
+  and `/media/` in the review configuration.
+
 ## Decisions still requiring approval
 
-1. Whether Phase 1B should use a dedicated ingress container or extend the
-   existing gateway process while retaining a separate Portal process.
-2. Whether internal identity moves from the Phase 1A shared-secret HS256 contract
-   to asymmetric signing before the first real module integration.
-3. Whether OIDC group changes update an existing local role automatically or
+1. Whether OIDC group changes update an existing local role automatically or
    require explicit Portal-administrator approval.
-4. The canonical same-origin routes (`/music/` and `/media/` are the current
-   proposal) and external hostname used for live redirect URIs.
-5. Session lifetime, emergency-local-admin policy, and whether provider logout is
+2. The external hostname used for live redirect URIs.
+3. Session lifetime, emergency-local-admin policy, and whether provider logout is
    required or local logout remains the default.
-6. Which module is integrated first in Phase 1B. Movies/TV is the safer choice
-   while independent work continues in `Music_Downloader/dev`.
 
 ## Proposed Phase 1B after approval
 

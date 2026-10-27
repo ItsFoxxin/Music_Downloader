@@ -10,6 +10,7 @@ requires-python = ">=3.12"
 dependencies = [
   "argon2-cffi==25.1.0",
   "authlib==1.6.5",
+  "cryptography==50.0.2",
   "fastapi==0.141.1",
   "httpx==0.28.1",
   "jinja2==3.1.6",
@@ -23,6 +24,7 @@ test = ["pytest==9.1.1"]
 [project.scripts]
 foxden-portal = "foxden_portal.app:run"
 foxden-portal-admin = "foxden_portal.cli:main"
+foxden-identity-keygen = "foxden_identity.cli:main"
 
 [tool.setuptools]
 package-dir = {"" = "src"}

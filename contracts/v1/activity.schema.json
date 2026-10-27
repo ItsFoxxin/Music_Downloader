@@ -1,0 +1,29 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://foxden.example/contracts/v1/activity.schema.json",
+  "title": "Fox Den module activity v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["contract_version", "module_id", "activity"],
+  "properties": {
+    "contract_version": {"const": "1.0"},
+    "module_id": {"type": "string", "minLength": 1, "maxLength": 40},
+    "activity": {
+      "type": "array",
+      "maxItems": 20,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "kind", "title", "status", "occurred_at"],
+        "properties": {
+          "id": {"type": "string", "minLength": 1, "maxLength": 100},
+          "kind": {"type": "string", "minLength": 1, "maxLength": 60},
+          "title": {"type": "string", "minLength": 1, "maxLength": 160},
+          "status": {"type": "string", "minLength": 1, "maxLength": 60},
+          "occurred_at": {"type": "string", "format": "date-time"},
+          "path": {"type": ["string", "null"], "maxLength": 300}
+        }
+      }
+    }
+  }
+}

@@ -9,6 +9,7 @@ import secrets
 import socket
 import subprocess
 import sys
+import tempfile
 import time
 import urllib.error
 import urllib.parse
@@ -46,22 +47,30 @@ def main() -> None:
     portal = f"foxden-portal-{suffix}"
     ingress = f"foxden-ingress-{suffix}"
     bootstrap = secrets.token_urlsafe(40)
+    key_dir = Path(tempfile.mkdtemp(prefix="foxden-identity-"))
     with socket.socket() as sock:
         sock.bind(("127.0.0.1", 0))
         port = sock.getsockname()[1]
     base = f"http://127.0.0.1:{port}"
     try:
         run("docker", "build", "-t", PORTAL_IMAGE, str(ROOT / "portal"))
+        run("docker", "run", "--rm", "--user", "0", "-v", f"{key_dir.resolve()}:/keys",
+            PORTAL_IMAGE, "foxden-identity-keygen", "--private", "/keys/private.pem",
+            "--public", "/keys/public.json", "--kid", "smoke-1")
+        run("docker", "run", "--rm", "--user", "0", "-v", f"{key_dir.resolve()}:/keys",
+            PORTAL_IMAGE, "chown", "10001:10001", "/keys/private.pem")
         run("docker", "network", "create", network)
         run("docker", "run", "-d", "--name", portal, "--network", network,
             "--network-alias", "portal", "--read-only", "--cap-drop", "ALL",
             "--security-opt", "no-new-privileges:true",
             "--tmpfs", "/tmp:rw,noexec,nosuid,nodev,size=64m,mode=1777",
             "--tmpfs", "/config:rw,noexec,nosuid,nodev,size=64m,uid=10001,gid=10001,mode=0770",
+            "-v", f"{(key_dir / 'private.pem').resolve()}:/run/secrets/identity.pem:ro",
             "-e", f"PORTAL_PUBLIC_URL={base}", "-e", "PORTAL_COOKIE_SECURE=false",
             "-e", f"PORTAL_SECRET_KEY={secrets.token_urlsafe(40)}",
-            "-e", f"PORTAL_INTERNAL_ASSERTION_SECRET={secrets.token_urlsafe(40)}",
             "-e", f"PORTAL_BOOTSTRAP_SECRET={bootstrap}",
+            "-e", "PORTAL_IDENTITY_PRIVATE_KEY_FILE=/run/secrets/identity.pem",
+            "-e", "PORTAL_IDENTITY_SIGNING_KID=smoke-1",
             "-e", "PORTAL_MODULES_JSON=[]", PORTAL_IMAGE)
         run("docker", "run", "-d", "--name", ingress, "--network", network,
             "--user", "101:101", "--read-only", "--cap-drop", "ALL",
@@ -104,7 +113,7 @@ def main() -> None:
         }) as result:
             assert result.status == 200 and b"Your media den" in result.read()
         with response(client, base + "/api/platform/v1/session") as result:
-            assert result.status == 204 and result.read() == b""
+            assert result.status == 404
 
         # Auth succeeds, then unavailable optional modules fail closed and do not
         # affect the Portal root.
@@ -118,12 +127,17 @@ def main() -> None:
         assert inspected["Config"]["User"] == "101:101"
         assert inspected["HostConfig"]["ReadonlyRootfs"] is True
         assert inspected["HostConfig"]["CapDrop"] == ["ALL"]
-        print("Portal ingress smoke passed: independent Portal, protected routes, missing-module isolation")
+        run("docker", "stop", portal)
+        with response(client, base + "/media/") as result:
+            assert result.status == 503 and result.read() == b"Authentication unavailable\n"
+        print("Portal ingress smoke passed: independent Portal, protected routes, missing-module and auth fail-closed isolation")
     finally:
         subprocess.run(["docker", "rm", "-f", ingress, portal], cwd=ROOT,
                        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         subprocess.run(["docker", "network", "rm", network], cwd=ROOT,
                        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        import shutil
+        shutil.rmtree(key_dir, ignore_errors=True)
 
 
 if __name__ == "__main__":

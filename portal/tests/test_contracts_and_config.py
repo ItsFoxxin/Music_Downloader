@@ -6,15 +6,9 @@ from fastapi.testclient import TestClient
 
 from foxden_portal.app import create_app
 from foxden_portal.config import ConfigError, Settings
-from foxden_portal.contracts import (
-    CONTRACT_VERSION,
-    IdentityError,
-    ModuleSummary,
-    issue_identity_assertion,
-    verify_identity_assertion,
-)
+from foxden_portal.contracts import ActivityFeed, CONTRACT_VERSION, ModuleSummary
 
-from conftest import ASSERTION_SECRET, bootstrap_admin, settings
+from conftest import bootstrap_admin, settings
 
 
 def test_checked_in_module_schema_matches_runtime_contract():
@@ -25,31 +19,15 @@ def test_checked_in_module_schema_matches_runtime_contract():
     assert set(checked_in["required"]) == set(runtime["required"])
     assert checked_in["properties"]["capabilities"]["maxItems"] == 50
     assert checked_in["properties"]["activity"]["maxItems"] == 20
-
-
-def test_internal_identity_round_trip_and_rejects_spoofing(tmp_path):
-    token = issue_identity_assertion(secret=ASSERTION_SECRET, issuer="foxden-portal", audience="music",
-                                     subject="user-id", username="fox", roles=["admin"], now=1000)
-    claims = verify_identity_assertion(token, secret=ASSERTION_SECRET, issuer="foxden-portal",
-                                       audience="music", now=1020)
-    assert claims["sub"] == "user-id" and claims["roles"] == ["admin"]
-    with pytest.raises(IdentityError):
-        verify_identity_assertion(token, secret="untrusted-secret-which-is-long-enough", issuer="foxden-portal",
-                                  audience="music", now=1020)
-    with pytest.raises(IdentityError):
-        verify_identity_assertion(token, secret=ASSERTION_SECRET, issuer="foxden-portal",
-                                  audience="media", now=1020)
-    with pytest.raises(IdentityError):
-        verify_identity_assertion(token, secret=ASSERTION_SECRET, issuer="foxden-portal",
-                                  audience="music", now=2000)
-    with TestClient(create_app(settings(tmp_path))) as client:
-        assert client.get("/health", headers={"X-FoxDen-Identity": token}).status_code == 400
+    activity_path = Path(__file__).parents[2] / "contracts" / "v1" / "activity.schema.json"
+    activity = json.loads(activity_path.read_text(encoding="utf-8"))
+    assert set(activity["required"]) == set(ActivityFeed.model_json_schema()["required"])
+    assert activity["properties"]["activity"]["maxItems"] == 20
 
 
 def test_config_validation_and_redaction(monkeypatch, tmp_path):
     monkeypatch.setenv("PORTAL_DATABASE_PATH", str(tmp_path / "portal.db"))
     monkeypatch.setenv("PORTAL_SECRET_KEY", "portal-configuration-secret-123456789")
-    monkeypatch.setenv("PORTAL_INTERNAL_ASSERTION_SECRET", "assertion-configuration-secret-123456")
     monkeypatch.setenv("PORTAL_BOOTSTRAP_SECRET", "bootstrap-configuration-secret-123456")
     monkeypatch.setenv("PORTAL_COOKIE_SECURE", "false")
     monkeypatch.setenv("PORTAL_MODULES_JSON", json.dumps([{
@@ -65,7 +43,6 @@ def test_config_validation_and_redaction(monkeypatch, tmp_path):
 def test_config_rejects_credentials_in_module_url(monkeypatch, tmp_path):
     monkeypatch.setenv("PORTAL_DATABASE_PATH", str(tmp_path / "portal.db"))
     monkeypatch.setenv("PORTAL_SECRET_KEY", "portal-configuration-secret-123456789")
-    monkeypatch.setenv("PORTAL_INTERNAL_ASSERTION_SECRET", "assertion-configuration-secret-123456")
     monkeypatch.setenv("PORTAL_BOOTSTRAP_SECRET", "bootstrap-configuration-secret-123456")
     monkeypatch.setenv("PORTAL_MODULES_JSON", '[{"id":"music","name":"Music","base_url":"http://user:pass@music:8000","navigation_path":"/music/"}]')
     with pytest.raises(ConfigError):
@@ -75,7 +52,6 @@ def test_config_rejects_credentials_in_module_url(monkeypatch, tmp_path):
 def test_local_mode_requires_no_oidc(monkeypatch, tmp_path):
     monkeypatch.setenv("PORTAL_DATABASE_PATH", str(tmp_path / "portal.db"))
     monkeypatch.setenv("PORTAL_SECRET_KEY", "portal-configuration-secret-123456789")
-    monkeypatch.setenv("PORTAL_INTERNAL_ASSERTION_SECRET", "assertion-configuration-secret-123456")
     monkeypatch.setenv("PORTAL_BOOTSTRAP_SECRET", "bootstrap-configuration-secret-123456")
     monkeypatch.setenv("PORTAL_AUTH_MODE", "local")
     configured = Settings.from_env()

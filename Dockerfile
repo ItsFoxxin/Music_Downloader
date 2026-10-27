@@ -10,6 +10,7 @@ WORKDIR /app
 COPY requirements.txt ./
 RUN pip install --no-cache-dir -r requirements.txt
 COPY app/ ./app/
+COPY portal/src/foxden_identity/ ./foxden_identity/
 COPY VERSION ./VERSION
 USER foxden:foxden
 EXPOSE 8010

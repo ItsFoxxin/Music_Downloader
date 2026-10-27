@@ -31,10 +31,16 @@ Variable upstream targets defer Docker DNS lookup, allowing ingress and Portal t
 start without optional backends. Missing authenticated module routes return a
 generic 503 and cannot make Portal unavailable.
 
-Ingress strips `X-FoxDen-Identity` and Authentik identity headers from every
-client request. It does not yet forward identity to modules. Authenticated
-activity and single-sign-on module access remain blocked until an integrity-
-protected, audience-bound Portal assertion is implemented and tested.
+Ingress strips `X-FoxDen-Identity`, `X-FoxDen-Ingress`, and Authentik identity
+headers from every client request. Portal is the only holder of an Ed25519
+private key. A private Nginx auth subrequest validates the Portal session and
+returns a 30–60 second assertion bound to either the Music or Movies/TV audience.
+Nginx forwards it only to that module and never mints or returns it to a browser.
+Modules independently verify trusted public keys, algorithm, issuer, audience,
+use, scope, time claims, token ID, signature, and replay state.
+
+Portal activity aggregation uses separate service assertions scoped to
+`activity:read`; user assertions and Authentik/OIDC tokens cannot substitute.
 
 ## Responsibility boundaries
 
@@ -63,5 +69,5 @@ secrets, backup/rollback notes, and live reverse-proxy validation.
 - Portal availability is independent of Music, Movies/TV, browser, torrent, VPN,
   and Jellyfin availability;
 - module paths fail closed when unauthenticated and fail safely when unavailable;
-- activity remains empty until trusted module identity is complete;
+- authenticated activity is limited to a separate sanitized contract;
 - current production behavior is preserved until explicit cutover approval.

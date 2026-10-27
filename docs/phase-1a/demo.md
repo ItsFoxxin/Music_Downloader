@@ -6,7 +6,6 @@ Install the Portal development dependencies, then provide three unrelated demo
 secrets without committing them:
 
     PORTAL_SECRET_KEY=<random 32+ characters>
-    PORTAL_INTERNAL_ASSERTION_SECRET=<different random 32+ characters>
     PORTAL_BOOTSTRAP_SECRET=<third random 32+ characters>
 
 Run:

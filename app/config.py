@@ -25,6 +25,10 @@ class Settings:
     max_files: int = 10000
     demo: bool = field(default_factory=lambda: os.getenv("DEMO_MODE", "false").lower() == "true")
     cookie_secure: bool = field(default_factory=lambda: os.getenv("COOKIE_SECURE", "false").lower() == "true")
+    identity_public_keys_file: Path | None = field(default_factory=lambda: (
+        Path(os.environ["FOX_DEN_IDENTITY_PUBLIC_KEYS_FILE"]).absolute()
+        if os.getenv("FOX_DEN_IDENTITY_PUBLIC_KEYS_FILE") else None))
+    identity_issuer: str = field(default_factory=lambda: os.getenv("FOX_DEN_IDENTITY_ISSUER", "foxden-portal").strip())
 
     def prepare(self):
         if len(self.token) < 24:
@@ -38,6 +42,10 @@ class Settings:
         if (browser_home.scheme != "https" or not browser_home.hostname
                 or browser_home.username or browser_home.password):
             raise ValueError("MEDIA_BROWSER_HOME_URL must be HTTPS without embedded credentials.")
+        if self.identity_public_keys_file and not self.identity_public_keys_file.is_file():
+            raise ValueError("FOX_DEN_IDENTITY_PUBLIC_KEYS_FILE is not readable.")
+        if not self.identity_issuer:
+            raise ValueError("FOX_DEN_IDENTITY_ISSUER must not be empty.")
         for root in (self.config, self.staging, self.media):
             root.mkdir(parents=True, exist_ok=True)
         roots = [p.resolve() for p in (self.config, self.staging, self.media)]

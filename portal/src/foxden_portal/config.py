@@ -95,9 +95,10 @@ class Settings:
     oidc_allowed_groups: tuple[str, ...]
     oidc_admin_groups: tuple[str, ...]
     oidc_logout: str
-    internal_assertion_secret: str
-    internal_assertion_issuer: str
-    internal_assertion_seconds: int
+    identity_private_key_path: Path | None
+    identity_signing_kid: str
+    identity_issuer: str
+    identity_lifetime_seconds: int
 
     @property
     def local_enabled(self) -> bool:
@@ -162,18 +163,22 @@ class Settings:
             oidc_allowed_groups=_csv("PORTAL_OIDC_ALLOWED_GROUPS"),
             oidc_admin_groups=_csv("PORTAL_OIDC_ADMIN_GROUPS"),
             oidc_logout=oidc_logout,
-            internal_assertion_secret=_secret("PORTAL_INTERNAL_ASSERTION_SECRET", required=True, minimum=32) or "",
-            internal_assertion_issuer=os.getenv("PORTAL_INTERNAL_ASSERTION_ISSUER", "foxden-portal").strip(),
-            internal_assertion_seconds=_integer("PORTAL_INTERNAL_ASSERTION_SECONDS", 60, 10, 300),
+            identity_private_key_path=(Path(os.environ["PORTAL_IDENTITY_PRIVATE_KEY_FILE"]).absolute()
+                                       if os.getenv("PORTAL_IDENTITY_PRIVATE_KEY_FILE") else None),
+            identity_signing_kid=os.getenv("PORTAL_IDENTITY_SIGNING_KID", "foxden-portal-1").strip(),
+            identity_issuer=os.getenv("PORTAL_IDENTITY_ISSUER", "foxden-portal").strip(),
+            identity_lifetime_seconds=_integer("PORTAL_IDENTITY_LIFETIME_SECONDS", 45, 30, 60),
         )
         settings.validate()
         return settings
 
     def validate(self) -> None:
-        if not self.internal_assertion_issuer or len(self.internal_assertion_issuer) > 100:
-            raise ConfigError("PORTAL_INTERNAL_ASSERTION_ISSUER must be 1 to 100 characters.")
-        if self.secret_key == self.internal_assertion_secret:
-            raise ConfigError("Portal and internal-assertion secrets must be different.")
+        for name, value in (("PORTAL_IDENTITY_ISSUER", self.identity_issuer),
+                            ("PORTAL_IDENTITY_SIGNING_KID", self.identity_signing_kid)):
+            if not value or len(value) > 100:
+                raise ConfigError(f"{name} must be 1 to 100 characters.")
+        if self.identity_private_key_path and not self.identity_private_key_path.is_file():
+            raise ConfigError("PORTAL_IDENTITY_PRIVATE_KEY_FILE is not readable.")
         if self.local_enabled and not self.bootstrap_secret and not self.database_path.exists():
             raise ConfigError("A fresh local-auth deployment requires PORTAL_BOOTSTRAP_SECRET or its file form.")
         if self.auth_mode == "oidc" and not self.oidc_admin_groups:
@@ -189,6 +194,7 @@ class Settings:
             "cookie_secure": self.cookie_secure,
             "oidc_configured": self.oidc_enabled,
             "bootstrap_configured": bool(self.bootstrap_secret),
+            "identity_signing_configured": bool(self.identity_private_key_path),
             "modules": [{"id": m.module_id, "name": m.name, "enabled": m.enabled} for m in self.modules],
         }
 

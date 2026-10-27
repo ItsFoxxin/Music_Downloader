@@ -14,11 +14,12 @@ from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
+from foxden_identity import IdentityError, ReplayGuard, TrustedKeySet
 
 from .config import Settings
 from .db import Store
 from .files import contained, linked, target
-from .platform_summary import module_summary
+from .platform_summary import module_summary, sanitized_activity
 from .qbit import Qbit
 from .worker import Worker
 from .version import __version__
@@ -91,6 +92,10 @@ def create_app(settings=None, *, start_worker=True, qbit=None):
     store = Store(s.config / "media.db")
     q = qbit or Qbit(s)
     worker = Worker(s, store, q)
+    trusted_identities = (TrustedKeySet.from_file(s.identity_public_keys_file)
+                          if s.identity_public_keys_file else None)
+    user_replay = ReplayGuard()
+    service_replay = ReplayGuard()
 
     @asynccontextmanager
     async def lifespan(app):
@@ -117,9 +122,20 @@ def create_app(settings=None, *, start_worker=True, qbit=None):
         return JSONResponse({"detail": str(exc)}, status_code=400)
 
     def auth(request: Request):
+        assertion = request.headers.get("X-FoxDen-Identity", "")
+        if assertion:
+            if not trusted_identities:
+                raise HTTPException(401, "Authentication required.")
+            try:
+                return trusted_identities.verify(
+                    assertion, issuer=s.identity_issuer, audience="media", token_use="user",
+                    required_scopes={"module:access"}, replay_guard=user_replay,
+                )
+            except IdentityError:
+                raise HTTPException(401, "Authentication required.") from None
         token = request.headers.get("Authorization", "").removeprefix("Bearer ")
         if token and hmac.compare_digest(token.encode(), s.token.encode()):
-            return
+            return {"roles": ["admin"], "token_use": "legacy"}
         cookie = request.cookies.get("foxden_session", "")
         try:
             issued, nonce, signature = cookie.split(".")
@@ -128,10 +144,27 @@ def create_app(settings=None, *, start_worker=True, qbit=None):
             if valid_time and hmac.compare_digest(signature, expected):
                 if request.method not in {"GET", "HEAD"} and request.headers.get("X-Foxden-Request") != "1":
                     raise HTTPException(403, "Missing same-origin request header.")
-                return
+                return {"roles": ["admin"], "token_use": "legacy"}
         except (ValueError, TypeError):
             pass
         raise HTTPException(401, "Enter your APP_TOKEN to unlock Fox Den Media.")
+
+    def admin_auth(identity=Depends(auth)):
+        if "admin" not in identity.get("roles", []):
+            raise HTTPException(403, "Administrator permission required.")
+        return identity
+
+    def service_auth(request: Request):
+        assertion = request.headers.get("X-FoxDen-Identity", "")
+        if not assertion or not trusted_identities:
+            raise HTTPException(401, "Service authentication required.")
+        try:
+            return trusted_identities.verify(
+                assertion, issuer=s.identity_issuer, audience="media", token_use="service",
+                required_scopes={"activity:read"}, replay_guard=service_replay,
+            )
+        except IdentityError:
+            raise HTTPException(401, "Service authentication required.") from None
 
     @app.post("/api/session", dependencies=[Depends(auth)])
     def login(request: Request):
@@ -163,6 +196,10 @@ def create_app(settings=None, *, start_worker=True, qbit=None):
         alive = not start_worker or (worker.thread is not None and worker.thread.is_alive())
         return module_summary(version=__version__, worker_available=alive,
                               qbit_enabled=bool(s.qbit_url), browser_enabled=bool(s.media_browser_home_url))
+
+    @app.get("/api/platform/v1/activity", dependencies=[Depends(service_auth)])
+    def platform_activity():
+        return sanitized_activity(store.media_requests())
 
     @app.get("/")
     def index():
@@ -254,7 +291,7 @@ complete any login or CAPTCHA yourself, add your chosen result to qBittorrent, t
             raise HTTPException(404, "Request not found")
         return result
 
-    @app.post("/api/requests", dependencies=[Depends(auth)], status_code=202)
+    @app.post("/api/requests", dependencies=[Depends(admin_auth)], status_code=202)
     def create_media_request(body: MediaRequestCreate):
         query, title, torrent_hash = request_details(body.query, body.title)
         acquisition_id = None
@@ -263,7 +300,7 @@ complete any login or CAPTCHA yourself, add your chosen result to qBittorrent, t
         public_query = "Magnet link" if torrent_hash else query
         return store.create_request(body.media_type, public_query, title, torrent_hash, acquisition_id)
 
-    @app.post("/api/requests/{request_id}/attach", dependencies=[Depends(auth)], status_code=202)
+    @app.post("/api/requests/{request_id}/attach", dependencies=[Depends(admin_auth)], status_code=202)
     def attach_media_request(request_id: str, body: MediaRequestAttach):
         request = store.media_request(request_id)
         if not request:
@@ -274,7 +311,7 @@ complete any login or CAPTCHA yourself, add your chosen result to qBittorrent, t
                                     status="acquiring", validation_id=None,
                                     import_id=None, error=None)
 
-    @app.post("/api/validate", dependencies=[Depends(auth)], status_code=202)
+    @app.post("/api/validate", dependencies=[Depends(admin_auth)], status_code=202)
     def queue_validation(body: ValidationRequest):
         if bool(body.source) == bool(body.torrent_hash):
             raise ValueError("Choose exactly one staging path or torrent.")
@@ -282,7 +319,7 @@ complete any login or CAPTCHA yourself, add your chosen result to qBittorrent, t
             contained(s.staging, body.source)
         return store.enqueue("validate", body.model_dump(exclude_none=True))
 
-    @app.post("/api/import", dependencies=[Depends(auth)], status_code=202)
+    @app.post("/api/import", dependencies=[Depends(admin_auth)], status_code=202)
     def queue_import(body: ImportRequest):
         destination = target(s, body.category, body.name)
         if os.path.lexists(destination):
@@ -296,17 +333,17 @@ complete any login or CAPTCHA yourself, add your chosen result to qBittorrent, t
             store.update_request(request["id"], status="importing", import_id=job["id"], error=None)
         return job
 
-    @app.post("/api/library/{import_id}/audit", dependencies=[Depends(auth)], status_code=202)
+    @app.post("/api/library/{import_id}/audit", dependencies=[Depends(admin_auth)], status_code=202)
     def queue_audit(import_id: str):
         if not any(r["id"] == import_id for r in store.imports()):
             raise HTTPException(404, "Import not found")
         return store.enqueue("audit", {"import_id": import_id})
 
-    @app.post("/api/torrents/action", dependencies=[Depends(auth)], status_code=202)
+    @app.post("/api/torrents/action", dependencies=[Depends(admin_auth)], status_code=202)
     def torrent_action(body: ActionRequest):
         return store.enqueue("torrent_action", body.model_dump())
 
-    @app.post("/api/torrents/add", dependencies=[Depends(auth)], status_code=202)
+    @app.post("/api/torrents/add", dependencies=[Depends(admin_auth)], status_code=202)
     def add_torrent(body: AddRequest):
         if not body.magnet.startswith("magnet:?") or "xt=urn:bt" not in body.magnet:
             raise ValueError("Provide a magnet link.")

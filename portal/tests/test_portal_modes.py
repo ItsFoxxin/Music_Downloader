@@ -43,15 +43,16 @@ def test_movies_only_hides_music(tmp_path):
         assert ">Music<" not in page.text
 
 
-def test_full_configuration_combines_activity(tmp_path):
+def test_full_configuration_withholds_unauthenticated_summary_activity(tmp_path):
     modules = configured_modules("music", "media")
     transport = module_transport({"music.test": module_summary("music"), "media.test": module_summary("media")})
     with TestClient(create_app(settings(tmp_path, modules), ModuleClient(.2, transport))) as client:
         bootstrap_admin(client)
         page = client.get("/")
-        assert "music item" in page.text and "media item" in page.text
+        assert "music item" not in page.text and "media item" not in page.text
         data = client.get("/api/platform/v1/status").json()
         assert {item["id"] for item in data["modules"]} == {"music", "media"}
+        assert data["activity"] == []
 
 
 def test_offline_timeout_invalid_and_unhealthy_are_differentiated(tmp_path):

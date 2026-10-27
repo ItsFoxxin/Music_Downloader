@@ -101,8 +101,10 @@ def test_csrf_is_required(local_client):
 
 def test_ingress_session_check_exposes_no_identity_or_secret(local_client):
     anonymous = local_client.get("/api/platform/v1/session")
-    assert anonymous.status_code == 401 and anonymous.content == b""
+    assert anonymous.status_code == 404
     bootstrap_admin(local_client)
     authenticated = local_client.get("/api/platform/v1/session")
-    assert authenticated.status_code == 204 and authenticated.content == b""
+    assert authenticated.status_code == 404
     assert "x-foxden-identity" not in authenticated.headers
+    ingress = local_client.get("/api/platform/v1/session", headers={"X-FoxDen-Ingress": "1"})
+    assert ingress.status_code == 204 and ingress.content == b""

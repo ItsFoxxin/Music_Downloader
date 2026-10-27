@@ -1,6 +1,7 @@
 from dataclasses import replace
 
 from fastapi.testclient import TestClient
+from foxden_identity import SigningKey, TrustedKeySet, generate_key_files
 
 from foxden_portal.app import create_app
 from foxden_portal.oidc import OIDCError, OIDCUnavailable
@@ -44,6 +45,23 @@ def test_successful_oidc_login_creates_local_session(tmp_path):
         assert response.status_code == 303
         assert client.get("/").status_code == 200
         assert client.app.state.store.user_by_username("foxxin") is not None
+
+
+def test_oidc_session_produces_same_internal_identity_contract(tmp_path):
+    private, public = tmp_path / "identity.pem", tmp_path / "identity.json"
+    generate_key_files(private, public, kid="oidc-test")
+    configured = replace(settings(tmp_path, auth_mode="hybrid"),
+                         identity_private_key_path=private, identity_signing_kid="oidc-test")
+    with TestClient(create_app(configured, oidc_client=FakeOIDC())) as client:
+        bootstrap_admin(client)
+        client.get("/auth/oidc/callback?state=state&code=code", follow_redirects=False)
+        response = client.get("/api/platform/v1/session?audience=media",
+                              headers={"X-FoxDen-Ingress": "1"})
+        claims = TrustedKeySet.from_file(public).verify(
+            response.headers["X-FoxDen-Identity"], issuer="foxden-portal",
+            audience="media", token_use="user", required_scopes={"module:access"})
+        assert response.status_code == 204
+        assert claims["preferred_username"] == "foxxin" and claims["roles"] == ["admin"]
 
 
 def test_invalid_token_is_rejected(tmp_path):

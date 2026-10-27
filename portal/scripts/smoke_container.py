@@ -23,7 +23,6 @@ def run(*args: str, capture: bool = False) -> str:
 def main() -> None:
     name = "foxden-portal-smoke-" + secrets.token_hex(4)
     portal_secret = secrets.token_urlsafe(40)
-    assertion_secret = secrets.token_urlsafe(40)
     bootstrap = secrets.token_urlsafe(40)
     try:
         run("docker", "build", "-t", IMAGE, str(ROOT))
@@ -32,7 +31,6 @@ def main() -> None:
             "--tmpfs", "/config:rw,noexec,nosuid,nodev,size=64m,uid=10001,gid=10001,mode=0770",
             "--cap-drop", "ALL", "--security-opt", "no-new-privileges:true",
             "-e", f"PORTAL_SECRET_KEY={portal_secret}",
-            "-e", f"PORTAL_INTERNAL_ASSERTION_SECRET={assertion_secret}",
             "-e", f"PORTAL_BOOTSTRAP_SECRET={bootstrap}",
             "-e", "PORTAL_COOKIE_SECURE=false", IMAGE)
         for _ in range(30):

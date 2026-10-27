@@ -8,7 +8,7 @@ import httpx
 from pydantic import ValidationError
 
 from .config import ModuleConfig
-from .contracts import ModuleSummary
+from .contracts import ActivityFeed, IDENTITY_HEADER, ModuleSummary
 
 
 @dataclass(frozen=True)
@@ -24,9 +24,11 @@ class ModuleSnapshot:
 
 
 class ModuleClient:
-    def __init__(self, timeout_seconds: float, transport: httpx.AsyncBaseTransport | None = None):
+    def __init__(self, timeout_seconds: float, transport: httpx.AsyncBaseTransport | None = None,
+                 service_assertion=None):
         self.timeout_seconds = timeout_seconds
         self.transport = transport
+        self.service_assertion = service_assertion
 
     async def fetch(self, module: ModuleConfig) -> ModuleSnapshot:
         try:
@@ -39,6 +41,22 @@ class ModuleClient:
                 if len(response.content) > 128 * 1024:
                     return self._invalid(module)
                 summary = ModuleSummary.model_validate(response.json())
+                # Public health reachability never authorizes activity disclosure.
+                activity = ()
+                if self.service_assertion:
+                    try:
+                        activity_response = await client.get(
+                            module.base_url + "/api/platform/v1/activity",
+                            headers={"Accept": "application/json",
+                                     IDENTITY_HEADER: self.service_assertion(module.module_id)},
+                        )
+                        if activity_response.status_code == 200 and len(activity_response.content) <= 128 * 1024:
+                            feed = ActivityFeed.model_validate(activity_response.json())
+                            if feed.module_id == module.module_id:
+                                activity = tuple(item.model_dump() for item in feed.activity[:10])
+                    except (httpx.HTTPError, asyncio.TimeoutError, ValueError, ValidationError):
+                        # Health remains useful even when private activity is unavailable or invalid.
+                        activity = ()
         except (httpx.TimeoutException, asyncio.TimeoutError):
             return self._offline(module, "Module timed out.")
         except httpx.HTTPError:
@@ -48,10 +66,6 @@ class ModuleClient:
         if summary.module_id != module.module_id:
             return self._invalid(module)
         state = "healthy" if summary.health.status == "healthy" else "unhealthy"
-        activity = tuple({
-            "id": item.id, "kind": item.kind, "title": item.title, "status": item.status,
-            "occurred_at": item.occurred_at, "path": item.path,
-        } for item in summary.activity[:10])
         capabilities = tuple(item.model_dump() for item in summary.capabilities)
         return ModuleSnapshot(module.module_id, module.name, module.navigation_path, state,
                               summary.health.summary, summary.module_version, capabilities, activity)

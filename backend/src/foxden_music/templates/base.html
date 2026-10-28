@@ -5,9 +5,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="dark">
   <title>{% block title %}{{ app_name }}{% endblock %}</title>
-  <link rel="stylesheet" href="{{ url_for('static', path='/styles.css') }}?v={{ version }}">
-  <link rel="stylesheet" href="{{ url_for('static', path='/workspace.css') }}?v={{ version }}">
-  <script src="{{ url_for('static', path='/app.js') }}?v={{ version }}" defer></script>
+  <link rel="stylesheet" href="{{ root_path }}/static/styles.css?v={{ version }}">
+  <link rel="stylesheet" href="{{ root_path }}/static/workspace.css?v={{ version }}">
+  <script src="{{ root_path }}/static/app.js?v={{ version }}" defer></script>
 </head>
 <body class="workspace">
   {% set path = request.url.path %}

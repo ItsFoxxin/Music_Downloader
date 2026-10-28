@@ -75,6 +75,7 @@ def test_integrated_mode_protects_ui_but_preserves_public_health(settings, datab
         assert page.status_code == 200
         assert 'href="/music/add"' in page.text
         assert "/music/static/styles.css" in page.text
+        assert client.get("/static/styles.css").status_code == 200
         assert client.get("/", headers=_headers(_assertion(key, audience="media"))).status_code == 401
         assert client.get("/", headers=_headers(_assertion(key, algorithm="HS256"))).status_code == 401
 

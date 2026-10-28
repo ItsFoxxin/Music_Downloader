@@ -853,8 +853,10 @@ def create_app(settings: Settings | None = None, database: Database | None = Non
         app.state.csrf = CsrfManager(_load_or_create_csrf_secret(settings))
         yield
 
-    app = FastAPI(title=settings.app_name, version=__version__, debug=False, lifespan=lifespan,
-                  root_path=settings.web_root_path)
+    # Ingress strips the public module prefix before forwarding requests. Keep
+    # Starlette routing rooted at "/" and add the public prefix only when
+    # rendering browser-facing URLs.
+    app = FastAPI(title=settings.app_name, version=__version__, debug=False, lifespan=lifespan)
     app.state.settings = settings
     app.state.database = database
     app.add_middleware(PrefixRedirectMiddleware, root_path=settings.web_root_path)

@@ -107,4 +107,17 @@ def test_ingress_session_check_exposes_no_identity_or_secret(local_client):
     assert authenticated.status_code == 404
     assert "x-foxden-identity" not in authenticated.headers
     ingress = local_client.get("/api/platform/v1/session", headers={"X-FoxDen-Ingress": "1"})
-    assert ingress.status_code == 204 and ingress.content == b""
+    assert ingress.status_code == 404
+
+
+def test_spoofed_ingress_marker_cannot_reach_private_session_endpoint(tmp_path):
+    from dataclasses import replace
+
+    configured = replace(settings(tmp_path), ingress_auth_secret="ingress-test-secret-123456789012345")
+    with TestClient(create_app(configured)) as client:
+        bootstrap_admin(client)
+        assert client.get("/api/platform/v1/session", headers={"X-FoxDen-Ingress": "1"}).status_code == 404
+        valid = client.get("/api/platform/v1/session", headers={
+            "X-FoxDen-Ingress": "1", "X-FoxDen-Ingress-Auth": configured.ingress_auth_secret,
+        })
+        assert valid.status_code == 204 and valid.content == b""

@@ -127,10 +127,16 @@ def create_app(settings=None, *, start_worker=True, qbit=None):
             if not trusted_identities:
                 raise HTTPException(401, "Authentication required.")
             try:
-                return trusted_identities.verify(
+                identity = trusted_identities.verify(
                     assertion, issuer=s.identity_issuer, audience="media", token_use="user",
                     required_scopes={"module:access"}, replay_guard=user_replay,
                 )
+                if not identity["roles"] or not set(identity["roles"]).issubset({"user", "admin"}):
+                    raise IdentityError("Identity role is invalid.")
+                if request.method not in {"GET", "HEAD", "OPTIONS"}:
+                    if request.headers.get("Origin", "").rstrip("/") != s.public_origin:
+                        raise HTTPException(403, "Request origin validation failed.")
+                return identity
             except IdentityError:
                 raise HTTPException(401, "Authentication required.") from None
         token = request.headers.get("Authorization", "").removeprefix("Bearer ")
@@ -159,15 +165,22 @@ def create_app(settings=None, *, start_worker=True, qbit=None):
         if not assertion or not trusted_identities:
             raise HTTPException(401, "Service authentication required.")
         try:
-            return trusted_identities.verify(
+            identity = trusted_identities.verify(
                 assertion, issuer=s.identity_issuer, audience="media", token_use="service",
                 required_scopes={"activity:read"}, replay_guard=service_replay,
             )
+            if identity["roles"]:
+                raise IdentityError("Service roles are invalid.")
+            return identity
         except IdentityError:
             raise HTTPException(401, "Service authentication required.") from None
 
-    @app.post("/api/session", dependencies=[Depends(auth)])
-    def login(request: Request):
+    @app.post("/api/session")
+    def login(request: Request, identity=Depends(auth)):
+        if identity.get("token_use") == "user":
+            # Portal-authenticated requests receive a fresh assertion at ingress;
+            # never translate a restricted identity into the legacy admin cookie.
+            return {"authenticated": True}
         issued = str(int(time.time()))
         nonce = secrets.token_hex(16)
         signature = hmac.new(s.token.encode(), f"{issued}.{nonce}".encode(), hashlib.sha256).hexdigest()

@@ -47,7 +47,17 @@ def main() -> None:
     portal = f"foxden-portal-{suffix}"
     ingress = f"foxden-ingress-{suffix}"
     bootstrap = secrets.token_urlsafe(40)
+    ingress_secret = secrets.token_urlsafe(40)
     key_dir = Path(tempfile.mkdtemp(prefix="foxden-identity-"))
+    ingress_secret_file = key_dir / "ingress-auth"
+    ingress_secret_file.write_text(ingress_secret, encoding="utf-8")
+    rendered_ingress = key_dir / "portal-ingress.conf"
+    rendered_ingress.write_text(
+        (ROOT / "gateway" / "portal-ingress.conf").read_text(encoding="utf-8").replace(
+            "__PORTAL_INGRESS_AUTH_SECRET__", ingress_secret
+        ),
+        encoding="utf-8",
+    )
     with socket.socket() as sock:
         sock.bind(("127.0.0.1", 0))
         port = sock.getsockname()[1]
@@ -58,7 +68,7 @@ def main() -> None:
             PORTAL_IMAGE, "foxden-identity-keygen", "--private", "/keys/private.pem",
             "--public", "/keys/public.json", "--kid", "smoke-1")
         run("docker", "run", "--rm", "--user", "0", "-v", f"{key_dir.resolve()}:/keys",
-            PORTAL_IMAGE, "chown", "10001:10001", "/keys/private.pem")
+            PORTAL_IMAGE, "chown", "10001:10001", "/keys/private.pem", "/keys/ingress-auth")
         run("docker", "network", "create", network)
         run("docker", "run", "-d", "--name", portal, "--network", network,
             "--network-alias", "portal", "--read-only", "--cap-drop", "ALL",
@@ -66,18 +76,20 @@ def main() -> None:
             "--tmpfs", "/tmp:rw,noexec,nosuid,nodev,size=64m,mode=1777",
             "--tmpfs", "/config:rw,noexec,nosuid,nodev,size=64m,uid=10001,gid=10001,mode=0770",
             "-v", f"{(key_dir / 'private.pem').resolve()}:/run/secrets/identity.pem:ro",
+            "-v", f"{ingress_secret_file.resolve()}:/run/secrets/ingress-auth:ro",
             "-e", f"PORTAL_PUBLIC_URL={base}", "-e", "PORTAL_COOKIE_SECURE=false",
             "-e", f"PORTAL_SECRET_KEY={secrets.token_urlsafe(40)}",
             "-e", f"PORTAL_BOOTSTRAP_SECRET={bootstrap}",
             "-e", "PORTAL_IDENTITY_PRIVATE_KEY_FILE=/run/secrets/identity.pem",
             "-e", "PORTAL_IDENTITY_SIGNING_KID=smoke-1",
+            "-e", "PORTAL_INGRESS_AUTH_SECRET_FILE=/run/secrets/ingress-auth",
             "-e", "PORTAL_MODULES_JSON=[]", PORTAL_IMAGE)
         run("docker", "run", "-d", "--name", ingress, "--network", network,
             "--user", "101:101", "--read-only", "--cap-drop", "ALL",
             "--security-opt", "no-new-privileges:true",
             "--tmpfs", "/tmp:rw,noexec,nosuid,nodev,size=64m,mode=1777",
             "-p", f"127.0.0.1:{port}:8080",
-            "-v", f"{(ROOT / 'gateway' / 'portal-ingress.conf').resolve()}:/etc/nginx/nginx.conf:ro",
+            "-v", f"{rendered_ingress.resolve()}:/etc/nginx/nginx.conf:ro",
             "nginx:stable-alpine", "nginx", "-g", "daemon off;")
         run("docker", "exec", ingress, "nginx", "-t")
 

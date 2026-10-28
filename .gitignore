@@ -17,3 +17,4 @@ __pycache__/
 htmlcov/
 work/
 *.zip
+integration/.runtime/

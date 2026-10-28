@@ -93,20 +93,22 @@ def test_private_key_permissions_and_no_overwrite(tmp_path):
 
 def test_local_session_issues_audience_bound_assertion_and_revocation(tmp_path):
     signer, trust, private, _public = keys(tmp_path)
-    configured = replace(settings(tmp_path), identity_private_key_path=private)
+    configured = replace(settings(tmp_path), identity_private_key_path=private,
+                         ingress_auth_secret="ingress-test-secret-123456789012345")
     with TestClient(create_app(configured)) as client:
         bootstrap_admin(client)
-        response = client.get("/api/platform/v1/session?audience=media", headers={"X-FoxDen-Ingress": "1"})
+        ingress = {"X-FoxDen-Ingress": "1", "X-FoxDen-Ingress-Auth": configured.ingress_auth_secret}
+        response = client.get("/api/platform/v1/session?audience=media", headers=ingress)
         token = response.headers["X-FoxDen-Identity"]
         claims = trust.verify(token, issuer="foxden-portal", audience="media", token_use="user",
                               required_scopes={"module:access"})
         assert response.status_code == 204 and claims["roles"] == ["admin"]
         assert client.get("/api/platform/v1/session?audience=music",
-                          headers={"X-FoxDen-Ingress": "1"}).status_code == 204
+                          headers=ingress).status_code == 204
         csrf = client.cookies.get("foxden_portal_csrf")
         client.post("/logout", data={"csrf": csrf})
         assert client.get("/api/platform/v1/session?audience=media",
-                          headers={"X-FoxDen-Ingress": "1"}).status_code == 401
+                          headers=ingress).status_code == 401
         assert token not in client.get("/health").text
 
 

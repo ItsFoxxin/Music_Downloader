@@ -42,9 +42,14 @@ causes Portal startup to fail rather than silently disabling authentication.
 
 - Portal: `PORTAL_IDENTITY_PRIVATE_KEY_FILE`,
   `PORTAL_IDENTITY_SIGNING_KID`, `PORTAL_IDENTITY_ISSUER`, and
-  `PORTAL_IDENTITY_LIFETIME_SECONDS` (30–60).
+  `PORTAL_IDENTITY_LIFETIME_SECONDS` (30–60). The private auth subrequest also
+  requires `PORTAL_INGRESS_AUTH_SECRET_FILE`; ingress must inject the matching
+  value from protected runtime configuration and strip client copies.
 - Movies/TV: `FOX_DEN_IDENTITY_PUBLIC_KEYS_FILE` and
-  `FOX_DEN_IDENTITY_ISSUER`.
+  `FOX_DEN_IDENTITY_ISSUER`, plus `FOX_DEN_PUBLIC_ORIGIN` for write protection.
+- Music: `FOXDEN_IDENTITY_PUBLIC_KEYS_FILE`, `FOXDEN_IDENTITY_ISSUER`,
+  `FOXDEN_IDENTITY_AUDIENCE=music`, `FOXDEN_PUBLIC_ORIGIN`, and
+  `WEB_ROOT_PATH=/music` in integrated mode.
 
 The review-only ingress and isolated tests use these settings. Production
 Compose and the active production Nginx configuration do not yet consume them.

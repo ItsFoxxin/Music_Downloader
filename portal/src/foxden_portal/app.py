@@ -132,7 +132,10 @@ def create_app(settings: Settings | None = None, module_client: ModuleClient | N
     @app.get("/api/platform/v1/session")
     def ingress_session(request: Request, audience: str | None = None):
         """Private Nginx auth_request target; never returns assertions to browsers."""
-        if request.headers.get("X-FoxDen-Ingress") != "1":
+        supplied = request.headers.get("X-FoxDen-Ingress-Auth", "")
+        if (request.headers.get("X-FoxDen-Ingress") != "1"
+                or not settings.ingress_auth_secret
+                or not secrets_equal(supplied, settings.ingress_auth_secret)):
             raise HTTPException(404)
         if not request.state.session:
             return Response(status_code=401)

@@ -29,6 +29,8 @@ def test_ingress_strips_identity_headers_and_preserves_transport_controls():
         assert CONFIG.count(f'proxy_set_header {header} "";') == 7
     assert CONFIG.count('proxy_set_header X-FoxDen-Ingress "";') == 4
     assert CONFIG.count('proxy_set_header X-FoxDen-Ingress "1";') == 3
+    assert CONFIG.count('proxy_set_header X-FoxDen-Ingress-Auth "";') == 4
+    assert CONFIG.count('__PORTAL_INGRESS_AUTH_SECRET__') == 3
     assert "proxy_set_header X-FoxDen-Identity $foxden_music_identity;" in CONFIG
     assert "proxy_set_header X-FoxDen-Identity $foxden_media_identity;" in CONFIG
     assert CONFIG.count("error_page 500 = @auth_unavailable;") == 2

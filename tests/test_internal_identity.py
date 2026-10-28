@@ -33,18 +33,28 @@ def configured_settings(tmp_path):
 
 def test_module_accepts_correct_user_and_rejects_cross_module_replay_and_forgery(tmp_path, caplog):
     signer, public = identity_files(tmp_path)
-    configured = replace(configured_settings(tmp_path), identity_public_keys_file=public)
+    configured = replace(configured_settings(tmp_path), identity_public_keys_file=public,
+                         public_origin="https://media.example")
     with TestClient(create_app(configured, start_worker=False)) as client:
         assertion = token(signer, roles=["admin"])
         response = client.get("/api/status", headers={"X-FoxDen-Identity": assertion})
         assert response.status_code == 200
+        restricted_session = client.post("/api/session", headers={
+            "X-FoxDen-Identity": token(signer), "Origin": "https://media.example",
+        })
+        assert restricted_session.status_code == 200
+        assert "foxden_session" not in restricted_session.headers.get("set-cookie", "")
         restricted = token(signer)
         denied = client.post("/api/requests", headers={"X-FoxDen-Identity": restricted},
                              json={"query": "Example", "media_type": "Movie"})
         assert denied.status_code == 403
         administrator = token(signer, roles=["admin"])
-        assert client.post("/api/requests", headers={"X-FoxDen-Identity": administrator},
+        assert client.post("/api/requests", headers={"X-FoxDen-Identity": administrator,
+                                                     "Origin": "https://media.example"},
                            json={"query": "Example", "media_type": "Movie"}).status_code == 202
+        no_origin = token(signer, roles=["admin"])
+        assert client.post("/api/requests", headers={"X-FoxDen-Identity": no_origin},
+                           json={"query": "Example", "media_type": "Movie"}).status_code == 403
         assert client.get("/api/status", headers={"X-FoxDen-Identity": assertion}).status_code == 401
         assert client.get("/api/status", headers={"X-FoxDen-Identity": token(signer, audience="music")}).status_code == 401
         forged = token(signer)
@@ -59,7 +69,8 @@ def test_module_accepts_correct_user_and_rejects_cross_module_replay_and_forgery
 
 def test_service_activity_is_separate_scoped_and_sanitized(tmp_path):
     signer, public = identity_files(tmp_path)
-    configured = replace(configured_settings(tmp_path), identity_public_keys_file=public)
+    configured = replace(configured_settings(tmp_path), identity_public_keys_file=public,
+                         public_origin="https://media.example")
     with TestClient(create_app(configured, start_worker=False)) as client:
         client.app.state.store.create_request("Movie", "https://private.example/secret-token", "Private title")
         service = token(signer, token_use="service", roles=[], scopes=["activity:read"])

@@ -51,12 +51,14 @@ def test_oidc_session_produces_same_internal_identity_contract(tmp_path):
     private, public = tmp_path / "identity.pem", tmp_path / "identity.json"
     generate_key_files(private, public, kid="oidc-test")
     configured = replace(settings(tmp_path, auth_mode="hybrid"),
-                         identity_private_key_path=private, identity_signing_kid="oidc-test")
+                         identity_private_key_path=private, identity_signing_kid="oidc-test",
+                         ingress_auth_secret="ingress-test-secret-123456789012345")
     with TestClient(create_app(configured, oidc_client=FakeOIDC())) as client:
         bootstrap_admin(client)
         client.get("/auth/oidc/callback?state=state&code=code", follow_redirects=False)
         response = client.get("/api/platform/v1/session?audience=media",
-                              headers={"X-FoxDen-Ingress": "1"})
+                              headers={"X-FoxDen-Ingress": "1",
+                                       "X-FoxDen-Ingress-Auth": configured.ingress_auth_secret})
         claims = TrustedKeySet.from_file(public).verify(
             response.headers["X-FoxDen-Identity"], issuer="foxden-portal",
             audience="media", token_use="user", required_scopes={"module:access"})

@@ -105,6 +105,19 @@ jobs:
         run: python portal/scripts/smoke_container.py
       - name: Portal ingress and missing-module isolation
         run: python scripts/smoke_portal_ingress.py
+      - name: Check out authoritative Music integration branch
+        uses: actions/checkout@v4
+        with:
+          repository: ItsFoxxin/Music_Downloader
+          ref: feature/0.4.1-portal-identity
+          path: .integration-music
+      - name: Isolated full-platform integration
+        run: |
+          python scripts/integration_stack.py up --music-source .integration-music --port 18080
+          python scripts/smoke_integration_stack.py
+      - name: Remove disposable integration state
+        if: always()
+        run: python scripts/integration_stack.py down
   gate:
     name: CI gate
     if: always()

@@ -99,6 +99,7 @@ class Settings:
     identity_signing_kid: str
     identity_issuer: str
     identity_lifetime_seconds: int
+    ingress_auth_secret: str | None = None
 
     @property
     def local_enabled(self) -> bool:
@@ -168,6 +169,7 @@ class Settings:
             identity_signing_kid=os.getenv("PORTAL_IDENTITY_SIGNING_KID", "foxden-portal-1").strip(),
             identity_issuer=os.getenv("PORTAL_IDENTITY_ISSUER", "foxden-portal").strip(),
             identity_lifetime_seconds=_integer("PORTAL_IDENTITY_LIFETIME_SECONDS", 45, 30, 60),
+            ingress_auth_secret=_secret("PORTAL_INGRESS_AUTH_SECRET", minimum=32),
         )
         settings.validate()
         return settings
@@ -179,6 +181,10 @@ class Settings:
                 raise ConfigError(f"{name} must be 1 to 100 characters.")
         if self.identity_private_key_path and not self.identity_private_key_path.is_file():
             raise ConfigError("PORTAL_IDENTITY_PRIVATE_KEY_FILE is not readable.")
+        if self.identity_private_key_path and not self.ingress_auth_secret:
+            raise ConfigError(
+                "PORTAL_INGRESS_AUTH_SECRET or its file form is required when internal identity signing is enabled."
+            )
         if self.local_enabled and not self.bootstrap_secret and not self.database_path.exists():
             raise ConfigError("A fresh local-auth deployment requires PORTAL_BOOTSTRAP_SECRET or its file form.")
         if self.auth_mode == "oidc" and not self.oidc_admin_groups:
@@ -195,6 +201,7 @@ class Settings:
             "oidc_configured": self.oidc_enabled,
             "bootstrap_configured": bool(self.bootstrap_secret),
             "identity_signing_configured": bool(self.identity_private_key_path),
+            "ingress_auth_configured": bool(self.ingress_auth_secret),
             "modules": [{"id": m.module_id, "name": m.name, "enabled": m.enabled} for m in self.modules],
         }
 

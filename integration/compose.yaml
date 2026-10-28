@@ -1,0 +1,173 @@
+name: foxden-media-integration
+
+x-music-environment: &music-environment
+  APP_ENVIRONMENT: integration
+  CONFIG_DIR: /config
+  STAGING_DIR: /staging
+  MUSIC_DIR: /music
+  DATABASE_URL: sqlite:////config/foxden-music.db
+  CSRF_SECRET: "${INTEGRATION_CSRF_SECRET:?Run scripts/integration_stack.py first}"
+  FOXDEN_IDENTITY_PUBLIC_KEYS_FILE: /run/identity/public.json
+  FOXDEN_IDENTITY_ISSUER: foxden-portal
+  FOXDEN_IDENTITY_AUDIENCE: music
+  FOXDEN_PUBLIC_ORIGIN: "${INTEGRATION_PUBLIC_ORIGIN:-http://127.0.0.1:18080}"
+  WEB_ROOT_PATH: /music
+  DOWNLOAD_INBOX_DIR: /downloads
+  DOWNLOAD_INBOX_AUTO_IMPORT: "false"
+  MUSIC_REQUEST_AUTO_IMPORT: "false"
+  MUSICBRAINZ_CONTACT: integration@example.invalid
+  REMOTE_BROWSER_URL: /server-browser/
+  LOG_LEVEL: INFO
+
+x-music-service: &music-service
+  image: foxden-music:0.4.1-integration
+  build:
+    context: "${MUSIC_SOURCE_PATH:?Set MUSIC_SOURCE_PATH to the isolated authoritative Music checkout}/backend"
+  user: "10001:10001"
+  read_only: true
+  init: true
+  cap_drop: [ALL]
+  security_opt: [no-new-privileges:true]
+  tmpfs:
+    - /tmp:rw,noexec,nosuid,nodev,size=128m,mode=1777
+  networks: [platform]
+  volumes:
+    - music-config:/config
+    - music-staging:/staging
+    - music-library:/music
+    - music-downloads:/downloads
+    - ./.runtime/public.json:/run/identity/public.json:ro
+
+services:
+  volume-init:
+    image: alpine:3.22
+    network_mode: none
+    user: "0:0"
+    read_only: true
+    cap_drop: [ALL]
+    cap_add: [CHOWN, DAC_OVERRIDE]
+    security_opt: [no-new-privileges:true]
+    command: [sh, -c, "chown -R 10001:10001 /portal /music-config /music-staging /music-library /music-downloads /media-config /media-staging /media-library"]
+    volumes:
+      - portal-config:/portal
+      - music-config:/music-config
+      - music-staging:/music-staging
+      - music-library:/music-library
+      - music-downloads:/music-downloads
+      - media-config:/media-config
+      - media-staging:/media-staging
+      - media-library:/media-library
+
+  ingress:
+    image: nginx:stable-alpine
+    user: "101:101"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=64m,mode=1777
+    ports:
+      - "127.0.0.1:${INTEGRATION_PORT:-18080}:8080"
+    volumes:
+      - ./.runtime/portal-ingress.conf:/etc/nginx/nginx.conf:ro
+    networks: [edge, platform]
+    depends_on:
+      portal: {condition: service_started}
+
+  portal:
+    image: foxden-portal:0.4.1-integration
+    build: ../portal
+    user: "10001:10001"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=64m,mode=1777
+    environment:
+      PORTAL_DATABASE_PATH: /config/portal.db
+      PORTAL_PUBLIC_URL: "${INTEGRATION_PUBLIC_ORIGIN:-http://127.0.0.1:18080}"
+      PORTAL_SECRET_KEY: "${INTEGRATION_PORTAL_SECRET:?Run scripts/integration_stack.py first}"
+      PORTAL_BOOTSTRAP_SECRET: "${INTEGRATION_BOOTSTRAP_SECRET:?Run scripts/integration_stack.py first}"
+      PORTAL_COOKIE_SECURE: "false"
+      PORTAL_AUTH_MODE: local
+      PORTAL_IDENTITY_PRIVATE_KEY_FILE: /run/identity/private.pem
+      PORTAL_IDENTITY_SIGNING_KID: integration-1
+      PORTAL_INGRESS_AUTH_SECRET_FILE: /run/identity/ingress-auth
+      PORTAL_MODULES_JSON: >-
+        [{"id":"music","name":"Music","base_url":"http://music:8000","navigation_path":"/music/"},{"id":"media","name":"Movies & TV","base_url":"http://media:8010","navigation_path":"/media/"}]
+    volumes:
+      - portal-config:/config
+      - ./.runtime/private.pem:/run/identity/private.pem:ro
+      - ./.runtime/ingress-auth:/run/identity/ingress-auth:ro
+    networks: [platform]
+    depends_on:
+      volume-init: {condition: service_completed_successfully}
+
+  music:
+    <<: *music-service
+    command: [foxden-music-web]
+    environment:
+      <<: *music-environment
+      MUSIC_DIR: /tmp/foxden-web-no-library
+      WEB_HOST: 0.0.0.0
+      WEB_PORT: "8000"
+      WEB_WORKERS: "1"
+      TMPDIR: /staging/.upload-tmp
+    depends_on:
+      volume-init: {condition: service_completed_successfully}
+
+  music-worker:
+    <<: *music-service
+    command: [foxden-music-worker]
+    environment:
+      <<: *music-environment
+      WORKER_POLL_SECONDS: "0.5"
+      LIBRARY_SCAN_INTERVAL_SECONDS: "86400"
+      STORAGE_SNAPSHOT_INTERVAL_SECONDS: "86400"
+      WORKER_HEARTBEAT_PATH: /tmp/foxden-music-worker-heartbeat.json
+    depends_on:
+      volume-init: {condition: service_completed_successfully}
+
+  media:
+    image: foxden-media:0.4.1-integration
+    build: ..
+    user: "10001:10001"
+    read_only: true
+    init: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=128m,mode=1777
+    environment:
+      CONFIG_DIR: /config
+      STAGING_DIR: /staging
+      MEDIA_DIR: /media
+      APP_TOKEN: "${INTEGRATION_MEDIA_TOKEN:?Run scripts/integration_stack.py first}"
+      DEMO_MODE: "true"
+      SETTLE_SECONDS: "0"
+      FOX_DEN_IDENTITY_PUBLIC_KEYS_FILE: /run/identity/public.json
+      FOX_DEN_IDENTITY_ISSUER: foxden-portal
+      FOX_DEN_PUBLIC_ORIGIN: "${INTEGRATION_PUBLIC_ORIGIN:-http://127.0.0.1:18080}"
+    volumes:
+      - media-config:/config
+      - media-staging:/staging
+      - media-library:/media
+      - ./.runtime/public.json:/run/identity/public.json:ro
+    networks: [platform]
+    depends_on:
+      volume-init: {condition: service_completed_successfully}
+
+networks:
+  edge: {}
+  platform:
+    internal: true
+
+volumes:
+  portal-config: {}
+  music-config: {}
+  music-staging: {}
+  music-library: {}
+  music-downloads: {}
+  media-config: {}
+  media-staging: {}
+  media-library: {}

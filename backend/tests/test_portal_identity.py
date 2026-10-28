@@ -111,6 +111,7 @@ def test_roles_origin_csrf_and_service_identity_are_separate(settings, database,
         accepted = client.post("/library/scans", data={"csrf_token": csrf}, follow_redirects=False,
                                headers=_headers(_assertion(key, roles=["admin"]), origin=True))
         assert accepted.status_code == 303
+        assert accepted.headers["location"].startswith("/music/library")
 
         service = _assertion(key, roles=[], scopes=["activity:read"], token_use="service")
         feed = client.get("/api/platform/v1/activity", headers=_headers(service))

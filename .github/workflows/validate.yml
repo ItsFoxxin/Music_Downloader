@@ -111,6 +111,7 @@ jobs:
           repository: ItsFoxxin/Music_Downloader
           ref: feature/0.4.1-portal-identity
           path: .integration-music
+          fetch-depth: 0
       - name: Isolated full-platform integration
         run: |
           python scripts/integration_stack.py up --music-source .integration-music --port 18080

@@ -11,7 +11,7 @@
     aria-atomic="true"
   >{{ job.state|replace('_', ' ') }}</span>
 </section>
-<div id="job-status" data-job-status-url="/jobs/{{ job.id }}/status" data-terminal="{{ 'true' if job.state in ['COMPLETE', 'FAILED', 'CANCELLED', 'NEEDS_REVIEW'] and not job.jellyfin_retry_requested else 'false' }}" aria-busy="false">
+<div id="job-status" data-job-status-url="{{ root_path }}/jobs/{{ job.id }}/status" data-job-api-url="{{ root_path }}/api/jobs/{{ job.id }}" data-terminal="{{ 'true' if job.state in ['COMPLETE', 'FAILED', 'CANCELLED', 'NEEDS_REVIEW'] and not job.jellyfin_retry_requested else 'false' }}" aria-busy="false">
   {% include "partials/job_status.html" %}
 </div>
 {% endblock %}

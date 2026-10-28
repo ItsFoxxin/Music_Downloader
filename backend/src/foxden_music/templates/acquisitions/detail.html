@@ -16,13 +16,13 @@
       <div class="copy-row"><input id="source-url" type="text" value="{{ acquisition.source_url }}" readonly><button class="button" type="button" data-copy-target="source-url">Copy URL</button></div>
       <p class="copy-feedback" data-copy-feedback role="status" aria-live="polite"></p>
       {% if acquisition.state == 'WAITING_FOR_USER' and manifest %}
-      <form action="/acquisitions/{{ acquisition.id }}/confirm-resolution" method="post">
+      <form action="{{ root_path }}/acquisitions/{{ acquisition.id }}/confirm-resolution" method="post">
         <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
         <button class="button" type="submit">Confirm resolved metadata</button>
       </form>
       {% endif %}
       {% if acquisition.state == 'WAITING_FOR_USER' %}
-      <form class="form-stack" action="/acquisitions/{{ acquisition.id }}/replace-reference" method="post">
+      <form class="form-stack" action="{{ root_path }}/acquisitions/{{ acquisition.id }}/replace-reference" method="post">
         <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
         <label for="reference-url"><strong>Use an exact MusicBrainz match</strong><span>Paste a recording or release link when search is ambiguous or returns nothing.</span></label>
         <input id="reference-url" name="reference_url" type="url" inputmode="url" placeholder="https://musicbrainz.org/release/..." required>
@@ -30,7 +30,7 @@
       </form>
       {% endif %}
       {% if remote_browser_url and automatic_inbox_enabled and acquisition.state in ['WAITING_FOR_USER', 'ACQUIRING', 'WAITING_FOR_DOWNLOAD'] %}
-      <form action="/acquisitions/{{ acquisition.id }}/begin-download" method="post" data-copy-open-form data-copy-target="source-url" data-browser-url="/acquisitions/{{ acquisition.id }}/browser">
+      <form action="{{ root_path }}/acquisitions/{{ acquisition.id }}/begin-download" method="post" data-copy-open-form data-copy-target="source-url" data-browser-url="{{ root_path }}/acquisitions/{{ acquisition.id }}/browser">
         <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
         <button class="button primary" type="submit" data-copy-open-submit>Copy URL &amp; start watched download</button>
       </form>
@@ -44,7 +44,7 @@
 
     <section class="panel" aria-labelledby="trace-heading">
       <div class="panel-heading"><div><p class="eyebrow">Unified trace</p><h2 id="trace-heading">Acquisition to library</h2></div></div>
-      <div data-poll-url="/acquisitions/{{ acquisition.id }}/status" data-poll-ms="5000" aria-live="polite" aria-atomic="true">
+      <div data-poll-url="{{ root_path }}/acquisitions/{{ acquisition.id }}/status" data-poll-ms="5000" aria-live="polite" aria-atomic="true">
         {% set poll_terminal = effective_state in ['COMPLETE', 'FAILED', 'CANCELLED', 'NEEDS_REVIEW'] %}
         {% include "partials/acquisition_status.html" %}
       </div>
@@ -95,14 +95,14 @@
     </section>
     {% endif %}
     {% if acquisition.state == 'NEEDS_REVIEW' and acquisition.import_job and acquisition.import_job.review_kind == 'REQUEST_AUTO_IMPORT' %}
-    <form class="panel form-stack" action="/acquisitions/{{ acquisition.id }}/approve-import" method="post">
+    <form class="panel form-stack" action="{{ root_path }}/acquisitions/{{ acquisition.id }}/approve-import" method="post">
       <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
       <div><p class="eyebrow">Import approval</p><h2>Validation stopped before the library</h2><p class="muted">Approval reruns validation, then allows the existing atomic importer to publish the album.</p></div>
       <button class="button primary" type="submit">Approve atomic import</button>
     </form>
     {% endif %}
     {% if not acquisition.associated_import_job_id and acquisition.state in ['QUEUED', 'WAITING_FOR_USER', 'WAITING_FOR_DOWNLOAD', 'ACQUIRING'] %}
-    <form class="panel form-stack" action="/acquisitions/{{ acquisition.id }}/upload" method="post" enctype="multipart/form-data" data-upload-form data-max-upload-bytes="{{ max_upload_bytes }}">
+    <form class="panel form-stack" action="{{ root_path }}/acquisitions/{{ acquisition.id }}/upload" method="post" enctype="multipart/form-data" data-upload-form data-max-upload-bytes="{{ max_upload_bytes }}">
       <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
       <div><p class="eyebrow">Fallback handoff</p><h2>Upload download manually</h2><p class="muted">Normally the server inbox detects the browser download automatically. Use this only for a file downloaded on another device. A loose audio file is treated as a one-track release.</p></div>
       <label for="acquisition-file"><strong>Album ZIP or one audio file</strong><span>Maximum {{ max_upload_bytes|filesize }}</span></label>
@@ -116,7 +116,7 @@
     </form>
     {% endif %}
     {% if not acquisition.associated_import_job_id and acquisition.state in ['REQUESTED', 'RESOLVING', 'QUEUED', 'WAITING_FOR_USER', 'WAITING_FOR_DOWNLOAD', 'ACQUIRING'] %}
-    <form class="panel form-stack danger-panel" action="/acquisitions/{{ acquisition.id }}/cancel" method="post">
+    <form class="panel form-stack danger-panel" action="{{ root_path }}/acquisitions/{{ acquisition.id }}/cancel" method="post">
       <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
       <div><p class="eyebrow">Waiting request</p><h2>Cancel this request</h2><p class="muted">This removes it from the active queue. It does not delete anything downloaded in your browser or touch media files.</p></div>
       <button class="button" type="submit">Cancel request</button>
@@ -124,7 +124,7 @@
     {% elif acquisition.state == 'CANCELLED' and not acquisition.associated_import_job_id %}
     <section class="panel danger-panel"><p class="eyebrow">Request cancelled</p><h2>Import was not started</h2><p class="muted">The request was cancelled before handoff and is preserved in history. No staging or music files were removed.</p></section>
     {% elif acquisition.import_job %}
-    <section class="panel"><p class="eyebrow">Linked import</p><h2>Stage 1 is in control</h2><p>{{ acquisition.import_job.track_count }} track{{ '' if acquisition.import_job.track_count == 1 else 's' }} inspected so far.</p><a class="button" href="/jobs/{{ acquisition.import_job.id }}">Open import details</a></section>
+    <section class="panel"><p class="eyebrow">Linked import</p><h2>Stage 1 is in control</h2><p>{{ acquisition.import_job.track_count }} track{{ '' if acquisition.import_job.track_count == 1 else 's' }} inspected so far.</p><a class="button" href="{{ root_path }}/jobs/{{ acquisition.import_job.id }}">Open import details</a></section>
     {% endif %}
   </aside>
 </div>

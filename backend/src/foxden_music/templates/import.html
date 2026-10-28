@@ -2,7 +2,7 @@
 {% block title %}Add music · {{ app_name }}{% endblock %}
 {% block content %}
 <section class="page-heading"><p class="eyebrow">New import</p><h1>Add music</h1><p>Upload an album ZIP or a supported individual audio file. The source is kept outside the live library.</p></section>
-<form class="panel upload-form form-stack" action="/imports" method="post" enctype="multipart/form-data" data-upload-form data-max-upload-bytes="{{ max_upload_bytes }}">
+<form class="panel upload-form form-stack" action="{{ root_path }}/imports" method="post" enctype="multipart/form-data" data-upload-form data-max-upload-bytes="{{ max_upload_bytes }}">
   <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
   <label class="drop-zone">
     <span class="upload-icon" aria-hidden="true">↑</span>

@@ -8,12 +8,12 @@
     <p>Everything on its way to your music library, in one quiet corner.</p>
   </div>
   <div class="mini-metrics">
-    <form action="/library/scans" method="post"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="button" type="submit">Refresh library</button></form>
-    <a class="button primary" href="/add">+ Add music</a>
+    <form action="{{ root_path }}/library/scans" method="post"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="button" type="submit">Refresh library</button></form>
+    <a class="button primary" href="{{ root_path }}/add">+ Add music</a>
   </div>
 </section>
 
-<div data-poll-url="/partials/dashboard/metrics" data-poll-ms="30000">
+<div data-poll-url="{{ root_path }}/partials/dashboard/metrics" data-poll-ms="30000">
   {% include "partials/dashboard_metrics.html" %}
 </div>
 
@@ -30,9 +30,9 @@
   <section class="panel" aria-labelledby="active-heading">
     <div class="panel-heading">
       <div><p class="eyebrow">In motion</p><h2 id="active-heading">Active jobs</h2></div>
-      <a href="/acquisitions">View queue</a>
+      <a href="{{ root_path }}/acquisitions">View queue</a>
     </div>
-    <div data-poll-url="/partials/dashboard/active" data-poll-ms="8000" aria-live="polite" aria-atomic="true">
+    <div data-poll-url="{{ root_path }}/partials/dashboard/active" data-poll-ms="8000" aria-live="polite" aria-atomic="true">
       {% include "partials/dashboard_active.html" %}
     </div>
   </section>
@@ -40,9 +40,9 @@
   <section class="panel" aria-labelledby="recent-heading">
     <div class="panel-heading">
       <div><p class="eyebrow">Published</p><h2 id="recent-heading">Recent imports</h2></div>
-      <a href="/history">View history</a>
+      <a href="{{ root_path }}/history">View history</a>
     </div>
-    <div data-poll-url="/partials/dashboard/recent" data-poll-ms="30000">
+    <div data-poll-url="{{ root_path }}/partials/dashboard/recent" data-poll-ms="30000">
       {% include "partials/dashboard_recent.html" %}
     </div>
   </section>

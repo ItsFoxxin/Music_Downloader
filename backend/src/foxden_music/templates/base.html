@@ -20,20 +20,20 @@
   {% elif path.startswith('/jobs') %}{% set section = 'Import details' %}{% endif %}
   <a class="skip-link" href="#main-content">Skip to main content</a>
   <aside class="sidebar">
-    <a class="brand" href="/" aria-label="Fox Den Music dashboard">
+    <a class="brand" href="{{ root_path }}/" aria-label="Fox Den Music dashboard">
       <span class="brand-mark" aria-hidden="true">🦊</span>
       <span>Fox Den<small>MUSIC WORKSPACE</small></span>
     </a>
     <p class="nav-label">Your collection</p>
     <nav aria-label="Main navigation">
       {% for href, label, icon in [('/', 'Dashboard', '◫'), ('/add', 'Add music', '+'), ('/acquisitions', 'Queue', '↓'), ('/review', 'Review', '✓'), ('/library', 'Library', '♫'), ('/history', 'History', '◷')] %}
-      <a href="{{ href }}"{% if section == label %} aria-current="page"{% endif %}><span class="nav-icon" aria-hidden="true">{{ icon }}</span>{{ label }}</a>
+      <a href="{{ root_path }}{{ href }}"{% if section == label %} aria-current="page"{% endif %}><span class="nav-icon" aria-hidden="true">{{ icon }}</span>{{ label }}</a>
       {% endfor %}
     </nav>
     <p class="nav-label">Explore the den</p>
     <nav class="secondary-nav" aria-label="Browse library">
       {% for href, label, icon in [('/library/artists', 'Artists', '♧'), ('/library/albums', 'Albums', '▤'), ('/library/health', 'Library health', '◇')] %}
-      <a href="{{ href }}"{% if path == href %} aria-current="page"{% endif %}><span class="nav-icon" aria-hidden="true">{{ icon }}</span>{{ label }}</a>
+      <a href="{{ root_path }}{{ href }}"{% if path == href %} aria-current="page"{% endif %}><span class="nav-icon" aria-hidden="true">{{ icon }}</span>{{ label }}</a>
       {% endfor %}
     </nav>
     <div class="sidebar-note">A little care for every track.<p>Check. Tag. Bring it home.</p><small>Fox Den Music · v{{ version }}</small></div>

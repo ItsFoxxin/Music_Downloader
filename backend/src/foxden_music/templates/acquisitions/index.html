@@ -3,11 +3,11 @@
 {% block content %}
 <section class="page-heading split">
   <div><p class="eyebrow">Music requests</p><h1>Request queue</h1><p>Requested → Resolving → Acquiring → Validating → Needs Review / Importing → Complete</p></div>
-  <a class="button primary" href="/add">Request music</a>
+  <a class="button primary" href="{{ root_path }}/add">Request music</a>
 </section>
 {% if created %}<div class="success-banner" role="status">{{ created }} acquisition{{ '' if created == 1 else 's' }} added to the queue.</div>{% endif %}
 
-<form class="filter-bar" action="/acquisitions" method="get">
+<form class="filter-bar" action="{{ root_path }}/acquisitions" method="get">
   <label for="queue-state">Status</label>
   <select id="queue-state" name="state">
     <option value="">All states</option>
@@ -26,7 +26,7 @@
       {% for acquisition in acquisitions %}
         {% set state = effective_state(acquisition) %}
         <tr>
-          <td><a href="/acquisitions/{{ acquisition.id }}"><strong>{{ acquisition.display_title }}</strong></a><small>{{ acquisition.source_identifier }}</small></td>
+          <td><a href="{{ root_path }}/acquisitions/{{ acquisition.id }}"><strong>{{ acquisition.display_title }}</strong></a><small>{{ acquisition.source_identifier }}</small></td>
           <td>{{ acquisition.source_type|title }}</td>
           <td>{{ acquisition.preferred_format|replace('_', ' ') }}</td>
           <td><span class="status status-{{ state|lower }}">{{ state|replace('_', ' ') }}</span></td>

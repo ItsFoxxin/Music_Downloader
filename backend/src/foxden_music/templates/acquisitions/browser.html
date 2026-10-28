@@ -12,7 +12,7 @@
 </head>
 <body class="browser-view">
   <header class="browser-toolbar">
-    <a class="button primary" href="/acquisitions/{{ acquisition.id }}?from=browser">Back to request</a>
+    <a class="button primary" href="{{ root_path }}/acquisitions/{{ acquisition.id }}?from=browser">Back to request</a>
     <button class="button" type="button" data-browser-home data-bridge-url="{{ url_for('static', path='/browser-home-bridge.js') }}?v={{ version }}" disabled>Downloader home</button>
     <button class="button" type="button" data-copy-target="browser-source-url">Copy link</button>
     <input id="browser-source-url" type="text" value="{{ acquisition.source_url }}" readonly aria-label="Spotify link">

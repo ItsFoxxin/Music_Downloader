@@ -90,7 +90,11 @@ def main() -> None:
     # One Portal session enters both real modules with no module login.
     for path in ("/music/", "/music/static/styles.css", "/media/", "/media/assets/style.css"):
         response = request(admin, base + path)
-        assert response.status == 200, path
+        payload = response.read()
+        assert response.status == 200, (
+            f"{path}: HTTP {response.status}; location={response.headers.get('Location')!r}; "
+            f"body={payload[:300]!r}"
+        )
     assert request(admin, base + "/api/platform/v1/session", headers={
         "X-FoxDen-Ingress": "1", "X-FoxDen-Ingress-Auth": "forged",
     }).status == 404

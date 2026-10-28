@@ -105,11 +105,11 @@ jobs:
         run: python portal/scripts/smoke_container.py
       - name: Portal ingress and missing-module isolation
         run: python scripts/smoke_portal_ingress.py
-      - name: Check out authoritative Music integration branch
+      - name: Check out authoritative Music integration revision
         uses: actions/checkout@v4
         with:
           repository: ItsFoxxin/Music_Downloader
-          ref: feature/0.4.1-portal-identity
+          ref: dc2f2c6ab8c5f68ef7731641a1a88cf3919fc100
           path: .integration-music
           fetch-depth: 0
       - name: Isolated full-platform integration

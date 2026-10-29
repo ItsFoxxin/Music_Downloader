@@ -90,7 +90,11 @@ def test_signature_replay_expiry_and_rotation(settings, database, tmp_path) -> N
         assert client.get("/", headers=_headers(replayed)).status_code == 401
         assert client.get("/", headers=_headers(_assertion(new, kid="new-key"))).status_code == 200
         assert client.get("/", headers=_headers(_assertion(new, kid="new-key", now=int(time.time()) - 90))).status_code == 401
-        altered = _assertion(new, kid="new-key")[:-1] + "A"
+        fresh = _assertion(new, kid="new-key")
+        # Ed25519's 64-byte signature leaves unused base64 tail bits. Change
+        # only those bits so a permissive decoder would produce identical
+        # signature bytes while the JWT spelling itself is non-canonical.
+        altered = fresh[:-1] + {"A": "B", "Q": "R", "g": "h", "w": "x"}[fresh[-1]]
         assert client.get("/", headers=_headers(altered)).status_code == 401
 
     # Restarting Music reloads the persistent public trust set; Portal can issue a fresh assertion.

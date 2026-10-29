@@ -32,7 +32,11 @@ class IdentityError(ValueError):
 
 def _decode(value: str) -> bytes:
     try:
-        return base64.b64decode(value + "=" * (-len(value) % 4), altchars=b"-_", validate=True)
+        decoded = base64.b64decode(value + "=" * (-len(value) % 4), altchars=b"-_", validate=True)
+        canonical = base64.urlsafe_b64encode(decoded).rstrip(b"=").decode("ascii")
+        if canonical != value:
+            raise ValueError
+        return decoded
     except (binascii.Error, ValueError) as exc:
         raise IdentityError("Internal identity assertion is invalid.") from exc
 

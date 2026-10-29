@@ -13,7 +13,7 @@ import sys
 ROOT = Path(__file__).resolve().parent.parent
 RUNTIME = ROOT / "integration" / ".runtime"
 COMPOSE = ROOT / "integration" / "compose.yaml"
-RECORDED_MUSIC_COMMIT = "b4bbffbb2a739a8b78ec6b194416b8d4fb5e09ea"
+APPROVED_MUSIC_COMMIT = "dc2f2c6ab8c5f68ef7731641a1a88cf3919fc100"
 
 
 def run(*args: str, cwd: Path = ROOT, capture: bool = False) -> str:
@@ -22,18 +22,23 @@ def run(*args: str, cwd: Path = ROOT, capture: bool = False) -> str:
     return result.stdout.strip() if capture else ""
 
 
-def verify_music(source: Path) -> None:
+def verify_music(source: Path, approved_commit: str = APPROVED_MUSIC_COMMIT) -> None:
     source = source.resolve()
     if not (source / ".git").exists():
         raise SystemExit("Music source must be a dedicated Git checkout or worktree.")
-    run("git", "merge-base", "--is-ancestor", RECORDED_MUSIC_COMMIT, "HEAD", cwd=source)
+    head = run("git", "rev-parse", "HEAD", cwd=source, capture=True)
+    if head != approved_commit:
+        raise SystemExit(
+            "Music integration checkout must be the approved revision "
+            f"{approved_commit}; found {head}. Use --music-commit only for an explicitly approved replacement."
+        )
     status = run("git", "status", "--short", cwd=source, capture=True)
     if status:
         raise SystemExit("Music integration checkout must be committed and clean before container testing.")
 
 
-def prepare(source: Path, port: int) -> Path:
-    verify_music(source)
+def prepare(source: Path, port: int, music_commit: str = APPROVED_MUSIC_COMMIT) -> Path:
+    verify_music(source, music_commit)
     RUNTIME.mkdir(parents=True, exist_ok=True)
     if os.name != "nt":
         RUNTIME.chmod(0o700)
@@ -78,13 +83,15 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("action", choices=("up", "down", "config"))
     parser.add_argument("--music-source", type=Path)
+    parser.add_argument("--music-commit", default=APPROVED_MUSIC_COMMIT,
+                        help="exact approved Music revision required by the disposable stack")
     parser.add_argument("--port", type=int, default=18080)
     options = parser.parse_args()
     env = RUNTIME / "integration.env"
     if options.action == "up":
         if not options.music_source:
             parser.error("up requires --music-source pointing to the isolated authoritative Music checkout")
-        env = prepare(options.music_source, options.port)
+        env = prepare(options.music_source, options.port, options.music_commit)
         compose(env, "up", "--build", "-d", "--wait")
     elif options.action == "config":
         if not env.is_file():

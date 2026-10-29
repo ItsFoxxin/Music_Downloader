@@ -1,4 +1,5 @@
 from pathlib import Path
+import importlib.util
 
 import yaml
 
@@ -47,3 +48,29 @@ def test_generated_runtime_state_is_ignored_and_production_compose_is_not_overri
     assert COMPOSE_PATH.name == "compose.yaml"
     assert COMPOSE_PATH.parent.name == "integration"
     assert "integration/compose.yaml" not in (ROOT / "compose.yaml").read_text(encoding="utf-8")
+
+
+def test_local_runner_requires_exact_approved_music_revision(monkeypatch, tmp_path):
+    module_path = ROOT / "scripts" / "integration_stack.py"
+    spec = importlib.util.spec_from_file_location("integration_stack", module_path)
+    runner = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(runner)
+    (tmp_path / ".git").mkdir()
+
+    def approved(*args, **kwargs):
+        if args[1:3] == ("rev-parse", "HEAD"):
+            return runner.APPROVED_MUSIC_COMMIT
+        if args[1:3] == ("status", "--short"):
+            return ""
+        raise AssertionError(args)
+
+    monkeypatch.setattr(runner, "run", approved)
+    runner.verify_music(tmp_path)
+
+    monkeypatch.setattr(runner, "run", lambda *args, **kwargs: "0" * 40)
+    try:
+        runner.verify_music(tmp_path)
+    except SystemExit as exc:
+        assert runner.APPROVED_MUSIC_COMMIT in str(exc)
+    else:
+        raise AssertionError("unapproved Music revision was accepted")

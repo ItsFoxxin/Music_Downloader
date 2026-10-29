@@ -180,18 +180,19 @@ def create_app(settings=None, *, start_worker=True, qbit=None):
         if identity.get("token_use") == "user":
             # Portal-authenticated requests receive a fresh assertion at ingress;
             # never translate a restricted identity into the legacy admin cookie.
-            return {"authenticated": True}
+            return {"authenticated": True, "auth_mode": "portal"}
         issued = str(int(time.time()))
         nonce = secrets.token_hex(16)
         signature = hmac.new(s.token.encode(), f"{issued}.{nonce}".encode(), hashlib.sha256).hexdigest()
-        response = JSONResponse({"authenticated": True})
+        response = JSONResponse({"authenticated": True, "auth_mode": "standalone"})
         response.set_cookie("foxden_session", f"{issued}.{nonce}.{signature}", max_age=8*3600,
                             httponly=True, samesite="strict", secure=s.cookie_secure or request.url.scheme == "https", path="/")
         return response
 
-    @app.get("/api/session", dependencies=[Depends(auth)])
-    def session():
-        return {"authenticated": True}
+    @app.get("/api/session")
+    def session(identity=Depends(auth)):
+        return {"authenticated": True,
+                "auth_mode": "portal" if identity.get("token_use") == "user" else "standalone"}
 
     @app.post("/api/logout", dependencies=[Depends(auth)])
     def logout():

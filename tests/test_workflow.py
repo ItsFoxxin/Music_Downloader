@@ -221,8 +221,11 @@ def test_shared_session_logout_and_csrf(settings):
         assert client.get('/api/session').status_code==401
         response=client.post('/api/session',headers={'Authorization':'Bearer '+settings.token})
         assert response.status_code==200
+        assert response.json()=={'authenticated':True,'auth_mode':'standalone'}
         assert 'HttpOnly' in response.headers['set-cookie']
-        assert client.get('/api/session').status_code==200
+        session=client.get('/api/session')
+        assert session.status_code==200
+        assert session.json()=={'authenticated':True,'auth_mode':'standalone'}
         response = client.get('/api/status')
         assert response.status_code == 200
         from app.version import __version__

@@ -17,6 +17,12 @@ generic state transitions only. Tests create deliberately private records and
 prove that titles, source URLs, magnet data, tracker tokens, host paths, and
 application credentials are absent.
 
+The Movies/TV frontend detects Portal assertions through the versioned session
+response. Integrated sessions skip the legacy access-token prompt, expose stable
+Portal and `/music/` navigation, and submit logout through Portal's existing
+CSRF-protected form. Standalone sessions retain the access-token login, legacy
+cookie, and workspace-lock behavior.
+
 This keeps the initial endpoint no more sensitive than a conventional service
 health/capability response while allowing the real Movies/TV process to validate
 against Portal contract v1.
@@ -47,8 +53,11 @@ cookie, or proof that any Docker-network caller is trusted.
 
 The authoritative Music integration is developed on a separate branch based on
 recorded `Music_Downloader/dev` commit
-`b4bbffbb2a739a8b78ec6b194416b8d4fb5e09ea`. It verifies Portal public JWKs,
-keeps standalone behavior available when integration is disabled, supports the
+`b4bbffbb2a739a8b78ec6b194416b8d4fb5e09ea`. The approved integration revision
+is `dc2f2c6ab8c5f68ef7731641a1a88cf3919fc100`. The local runner rejects any
+other Music `HEAD` by default; `--music-commit` is reserved for an explicitly
+approved replacement release. Music verifies Portal public JWKs, keeps
+standalone behavior available when integration is disabled, supports the
 `/music/` module prefix, and exposes only a service-authenticated sanitized
 activity feed.
 

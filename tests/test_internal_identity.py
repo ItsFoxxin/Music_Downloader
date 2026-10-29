@@ -43,6 +43,7 @@ def test_module_accepts_correct_user_and_rejects_cross_module_replay_and_forgery
             "X-FoxDen-Identity": token(signer), "Origin": "https://media.example",
         })
         assert restricted_session.status_code == 200
+        assert restricted_session.json() == {"authenticated": True, "auth_mode": "portal"}
         assert "foxden_session" not in restricted_session.headers.get("set-cookie", "")
         restricted = token(signer)
         denied = client.post("/api/requests", headers={"X-FoxDen-Identity": restricted},
@@ -91,3 +92,18 @@ def test_legacy_module_auth_remains_compatible_without_identity_keys(tmp_path):
     with TestClient(create_app(configured, start_worker=False)) as client:
         response = client.get("/api/status", headers={"Authorization": f"Bearer {configured.token}"})
         assert response.status_code == 200
+
+
+def test_integrated_frontend_uses_portal_navigation_and_logout(tmp_path):
+    signer, public = identity_files(tmp_path)
+    configured = replace(configured_settings(tmp_path), identity_public_keys_file=public,
+                         public_origin="https://media.example")
+    with TestClient(create_app(configured, start_worker=False)) as client:
+        response = client.get("/api/session", headers={"X-FoxDen-Identity": token(signer)})
+        assert response.json() == {"authenticated": True, "auth_mode": "portal"}
+        page = client.get("/").text
+        script = client.get("/assets/app.js").text
+        assert 'id="portal-link"' in page and 'id="music-link"' in page
+        assert 'integrated?"/music/":"/"' in script
+        assert 'form[action="/logout"] input[name="csrf"]' in script
+        assert 'location.assign("/login")' in script

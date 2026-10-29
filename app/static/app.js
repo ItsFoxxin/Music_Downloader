@@ -7,7 +7,7 @@ const empty = (title, text, icon="◇") => `<div class="empty"><span class="empt
 const badge = (label, tone="") => `<span class="badge ${tone}">${esc(label)}</span>`;
 const requestedView=new URLSearchParams(location.search).get("view");
 const initialView=new Set(["overview","requests","downloads","staging","library","history","settings"]).has(requestedView)?requestedView:"overview";
-let state={status:null,torrents:[],torrentError:"",staging:[],jobs:[],library:[],requests:[]}, tab=initialView, activeReview=null, busy=false, token="", authenticated=false;
+let state={status:null,torrents:[],torrentError:"",staging:[],jobs:[],library:[],requests:[]}, tab=initialView, activeReview=null, busy=false, token="", authenticated=false, integrated=false;
 
 async function api(path, body){
   const response=await fetch(`./api/${path}`,{method:body===undefined?"GET":"POST",headers:{...(token?{"Authorization":`Bearer ${token}`}:{ }),"Content-Type":"application/json","X-Foxden-Request":"1"},body:body===undefined?undefined:JSON.stringify(body)});
@@ -17,12 +17,29 @@ async function api(path, body){
 }
 function toast(message){$("toast").textContent=message;$("toast").hidden=false;clearTimeout(toast.timer);toast.timer=setTimeout(()=>$("toast").hidden=true,9000);}
 function lock(){token="";authenticated=false;$("shell").hidden=true;$("login").hidden=false;$("token").value="";}
+function configureAuthentication(session){
+  integrated=session?.auth_mode==="portal";
+  $("portal-link").hidden=!integrated;
+  $("music-link").href=integrated?"/music/":"/";
+  $("lock-label").textContent=integrated?"Log out of Fox Den":"Lock workspace";
+}
+async function logout(){
+  if(!integrated){try{await api("logout",{});}catch{}lock();return;}
+  try{
+    const page=await fetch("/",{credentials:"same-origin",headers:{"Accept":"text/html"}});
+    const documentCopy=new DOMParser().parseFromString(await page.text(),"text/html");
+    const csrf=documentCopy.querySelector('form[action="/logout"] input[name="csrf"]')?.value;
+    if(!page.ok||!csrf)throw new Error("Portal logout form unavailable");
+    const form=new FormData();form.set("csrf",csrf);
+    await fetch("/logout",{method:"POST",body:form,credentials:"same-origin"});
+  }finally{location.assign("/login");}
+}
 async function unlock(){
   try {if(token){await api("session",{});token="";$("token").value="";}state.status=await api("status");authenticated=true;$("login").hidden=true;$("shell").hidden=false;$("login-error").textContent="";await refresh();}
   catch(error){$("login-error").textContent=error.message;}
 }
 $("login-form").addEventListener("submit",e=>{e.preventDefault();token=$("token").value.trim();unlock();});
-$("lock").addEventListener("click",async()=>{try{await api("logout",{});}catch{}lock();});
+$("lock").addEventListener("click",logout);
 $("refresh").addEventListener("click",refresh);
 $("search").addEventListener("input",render);
 document.querySelectorAll("[data-tab]").forEach(b=>b.addEventListener("click",()=>{tab=b.dataset.tab;$("search").value="";render();}));
@@ -142,4 +159,4 @@ $("request-form").addEventListener("submit",async e=>{
   e.preventDefault();const button=e.submitter;button.disabled=true;
   try{await api("requests",{query:$("request-query").value.trim(),media_type:$("request-type").value,title:$("request-title").value.trim()||null});$("request-dialog").close();$("request-query").value="";$("request-title").value="";tab="requests";toast("Request created. Fox Den will follow it through validation and import.");await refresh();}catch(error){toast(error.message);}finally{button.disabled=false;}
 });
-api("session").then(()=>unlock()).catch(()=>{});setInterval(()=>{if(!document.hidden)refresh();},10000);
+api("session").then(session=>{configureAuthentication(session);return unlock();}).catch(()=>lock());setInterval(()=>{if(!document.hidden)refresh();},10000);

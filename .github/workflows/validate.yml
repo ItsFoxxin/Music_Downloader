@@ -109,7 +109,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: ItsFoxxin/Music_Downloader
-          ref: dc2f2c6ab8c5f68ef7731641a1a88cf3919fc100
+          ref: 478c1a6fe082aecd338fe81954b7946f02cbd007
           path: .integration-music
           fetch-depth: 0
       - name: Isolated full-platform integration

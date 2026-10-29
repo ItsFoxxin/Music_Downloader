@@ -53,7 +53,8 @@ def test_rejects_altered_expired_malformed_and_unsupported_tokens(tmp_path):
     token = user_token(signer)
     parts = token.split(".")
     altered = parts[0] + "." + parts[1] + "." + ("A" if parts[2][0] != "A" else "B") + parts[2][1:]
-    for bad in (altered, "not.a.token"):
+    noncanonical = token[:-1] + {"A": "B", "Q": "R", "g": "h", "w": "x"}[token[-1]]
+    for bad in (altered, noncanonical, "not.a.token"):
         with pytest.raises(IdentityError):
             trust.verify(bad, issuer="foxden-portal", audience="media", token_use="user", now=1010)
     with pytest.raises(IdentityError, match="expired"):

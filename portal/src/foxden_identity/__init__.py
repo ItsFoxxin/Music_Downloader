@@ -34,7 +34,10 @@ def _b64(data: bytes) -> str:
 
 def _unb64(value: str) -> bytes:
     try:
-        return base64.b64decode(value + "=" * (-len(value) % 4), altchars=b"-_", validate=True)
+        decoded = base64.b64decode(value + "=" * (-len(value) % 4), altchars=b"-_", validate=True)
+        if _b64(decoded) != value:
+            raise ValueError
+        return decoded
     except (binascii.Error, ValueError) as exc:
         raise IdentityError("Identity assertion is malformed.") from exc
 

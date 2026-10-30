@@ -8,7 +8,7 @@
 </section>
 
 <div class="add-grid">
-  <form class="panel form-stack" action="/acquisitions" method="post">
+  <form class="panel form-stack" action="{{ root_path }}/acquisitions" method="post">
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
     <div><p class="eyebrow">Automated request workflow</p><h2>Request music</h2><p class="muted">Use one request per line. Links are detected automatically; name searches use MusicBrainz.</p></div>
     {% if form_error %}<div class="form-error" role="alert"><strong>Nothing was queued.</strong><span>{{ form_error }}</span></div>{% endif %}
@@ -30,7 +30,7 @@
     <button class="button primary" type="submit">Request music</button>
   </form>
 
-  <form class="panel upload-form form-stack" action="/imports" method="post" enctype="multipart/form-data" data-upload-form data-max-upload-bytes="{{ max_upload_bytes }}">
+  <form class="panel upload-form form-stack" action="{{ root_path }}/imports" method="post" enctype="multipart/form-data" data-upload-form data-max-upload-bytes="{{ max_upload_bytes }}">
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
     <div><p class="eyebrow">Direct import</p><h2>Already have the download?</h2><p class="muted">Upload a ZIP or supported audio file without creating an acquisition request.</p></div>
     <label class="drop-zone">
@@ -74,7 +74,7 @@
                 <td>{% if file.ready %}<span class="status status-queued">Ready</span>{% else %}<span class="status status-staging">{{ file.reason }}</span>{% endif %}</td>
                 <td>
                   {% if file.ready %}
-                    <form action="/imports/inbox" method="post">
+                    <form action="{{ root_path }}/imports/inbox" method="post">
                       <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                       <input type="hidden" name="inbox_file" value="{{ file.relative_path }}">
                       <button class="button" type="submit">Import from server</button>

@@ -17,9 +17,7 @@
       });
       if (response.ok) status.innerHTML = await response.text();
 
-      const apiUrl = status.dataset.jobStatusUrl
-        .replace(/\/status$/, "")
-        .replace(/^\/jobs\//, "/api/jobs/");
+      const apiUrl = status.dataset.jobApiUrl;
       const apiResponse = await fetch(apiUrl, { cache: "no-store" });
       if (apiResponse.ok) {
         const job = await apiResponse.json();

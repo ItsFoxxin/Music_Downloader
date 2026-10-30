@@ -19,6 +19,7 @@ dependencies = [
   "mutagen==1.48.1",
   "Pillow==13.0.0",
   "itsdangerous==2.2.0",
+  "cryptography==50.0.2",
 ]
 
 [project.optional-dependencies]

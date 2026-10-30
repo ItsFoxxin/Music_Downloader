@@ -45,8 +45,13 @@ class Settings(BaseSettings):
     web_host: str = "0.0.0.0"
     web_port: int = 8000
     web_workers: int = 1
+    web_root_path: str = ""
     log_level: str = "INFO"
     csrf_secret: str | None = None
+    foxden_identity_public_keys_file: Path | None = None
+    foxden_identity_issuer: str = "foxden-portal"
+    foxden_identity_audience: str = "music"
+    foxden_public_origin: str | None = None
 
     max_upload_bytes: int = 4 * 1024**3
     upload_chunk_bytes: int = 1024**2
@@ -101,6 +106,8 @@ class Settings(BaseSettings):
         "spotify_client_secret",
         "spotify_client_secret_file",
         "acoustid_api_key",
+        "foxden_identity_public_keys_file",
+        "foxden_public_origin",
         mode="before",
     )
     @classmethod
@@ -108,6 +115,32 @@ class Settings(BaseSettings):
         if isinstance(value, str) and not value.strip():
             return None
         return value
+
+    @field_validator("foxden_public_origin")
+    @classmethod
+    def validate_public_origin(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        from urllib.parse import urlsplit
+
+        parsed = urlsplit(value)
+        if parsed.scheme not in {"http", "https"} or not parsed.hostname or parsed.path not in {"", "/"}:
+            raise ValueError("FOXDEN_PUBLIC_ORIGIN must be an HTTP(S) origin without a path")
+        if parsed.username or parsed.password or parsed.query or parsed.fragment:
+            raise ValueError("FOXDEN_PUBLIC_ORIGIN must not contain credentials, a query, or a fragment")
+        return value.rstrip("/")
+
+    @field_validator("web_root_path")
+    @classmethod
+    def validate_web_root_path(cls, value: str) -> str:
+        value = value.strip().rstrip("/")
+        if value and (not value.startswith("/") or ".." in value or "//" in value):
+            raise ValueError("WEB_ROOT_PATH must be empty or a safe absolute path prefix")
+        return value
+
+    @property
+    def foxden_integrated_mode(self) -> bool:
+        return self.foxden_identity_public_keys_file is not None
 
     @field_validator("spotidownloader_url")
     @classmethod

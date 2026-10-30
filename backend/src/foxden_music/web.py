@@ -75,6 +75,7 @@ from .inventory import (
     quality_counts as inventory_quality_counts,
     storage_values as inventory_storage_values,
 )
+from .internal_identity import IdentityError, ReplayGuard, TrustedKeySet
 from .logging_config import configure_logging
 from .models import (
     AcquisitionArtifact,
@@ -113,6 +114,104 @@ _SECURITY_HEADERS = {
 
 class _RequestBodyTooLarge(BaseException):
     """Escape FastAPI's generic Exception-to-400 body parser wrapper."""
+
+
+class IntegratedIdentityMiddleware:
+    """Fail closed around Music when Portal integration is explicitly enabled."""
+
+    _PUBLIC_PATHS = frozenset({"/health", "/api/health", "/api/platform/v1/summary"})
+    _SAFE_METHODS = frozenset({"GET", "HEAD", "OPTIONS"})
+
+    def __init__(self, app: ASGIApp, *, trust: TrustedKeySet, issuer: str,
+                 audience: str, public_origin: str):
+        self.app = app
+        self.trust = trust
+        self.issuer = issuer
+        self.audience = audience
+        self.public_origin = public_origin
+        self.replays = ReplayGuard()
+
+    @staticmethod
+    async def _reject(send: Send, status_code: int, detail: str) -> None:
+        body = json.dumps({"detail": detail}, separators=(",", ":")).encode("utf-8")
+        await send({
+            "type": "http.response.start",
+            "status": status_code,
+            "headers": [(b"content-type", b"application/json"),
+                        (b"cache-control", b"no-store"),
+                        (b"content-length", str(len(body)).encode("ascii"))],
+        })
+        await send({"type": "http.response.body", "body": body})
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+        path = scope.get("path", "")
+        if path in self._PUBLIC_PATHS or path.startswith("/static/"):
+            await self.app(scope, receive, send)
+            return
+        headers = {key.lower(): value for key, value in scope.get("headers", [])}
+        raw_assertion = headers.get(b"x-foxden-identity", b"")
+        try:
+            assertion = raw_assertion.decode("ascii")
+        except UnicodeDecodeError:
+            assertion = ""
+        token_use = "service" if path == "/api/platform/v1/activity" else "user"
+        required_scope = "activity:read" if token_use == "service" else "module:access"
+        try:
+            claims = self.trust.verify(
+                assertion,
+                issuer=self.issuer,
+                audience=self.audience,
+                token_use=token_use,
+                required_scopes={required_scope},
+                allowed_roles={"user", "admin"} if token_use == "user" else None,
+                replay_guard=self.replays,
+            )
+        except IdentityError:
+            await self._reject(send, 401, "Valid Fox Den authentication is required.")
+            return
+        if token_use == "service" and claims["roles"]:
+            await self._reject(send, 403, "Service identity is not authorized.")
+            return
+        method = scope.get("method", "GET").upper()
+        if token_use == "user" and method not in self._SAFE_METHODS:
+            if "admin" not in claims["roles"]:
+                await self._reject(send, 403, "Administrator access is required.")
+                return
+            try:
+                origin = headers.get(b"origin", b"").decode("ascii").rstrip("/")
+            except UnicodeDecodeError:
+                origin = ""
+            if origin != self.public_origin:
+                await self._reject(send, 403, "Request origin validation failed.")
+                return
+        scope.setdefault("state", {})["foxden_identity"] = claims
+        await self.app(scope, receive, send)
+
+
+class PrefixRedirectMiddleware:
+    """Keep application redirects inside the configured external module path."""
+
+    def __init__(self, app: ASGIApp, root_path: str):
+        self.app = app
+        self.root_path = root_path
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        async def rewrite(message: Message) -> None:
+            if message["type"] == "http.response.start" and self.root_path:
+                headers = []
+                for key, value in message.get("headers", []):
+                    if key.lower() == b"location" and value.startswith(b"/"):
+                        prefix = self.root_path.encode("ascii")
+                        if value != prefix and not value.startswith(prefix + b"/"):
+                            value = prefix + value
+                    headers.append((key, value))
+                message["headers"] = headers
+            await send(message)
+
+        await self.app(scope, receive, rewrite)
 
 
 class RequestBodyLimitMiddleware:
@@ -754,9 +853,24 @@ def create_app(settings: Settings | None = None, database: Database | None = Non
         app.state.csrf = CsrfManager(_load_or_create_csrf_secret(settings))
         yield
 
+    # Ingress strips the public module prefix before forwarding requests. Keep
+    # Starlette routing rooted at "/" and add the public prefix only when
+    # rendering browser-facing URLs.
     app = FastAPI(title=settings.app_name, version=__version__, debug=False, lifespan=lifespan)
     app.state.settings = settings
     app.state.database = database
+    app.add_middleware(PrefixRedirectMiddleware, root_path=settings.web_root_path)
+    if settings.foxden_integrated_mode:
+        if not settings.foxden_public_origin:
+            raise RuntimeError("FOXDEN_PUBLIC_ORIGIN is required when Portal identity integration is enabled")
+        trust = TrustedKeySet.from_file(settings.foxden_identity_public_keys_file)
+        app.add_middleware(
+            IntegratedIdentityMiddleware,
+            trust=trust,
+            issuer=settings.foxden_identity_issuer,
+            audience=settings.foxden_identity_audience,
+            public_origin=settings.foxden_public_origin,
+        )
     app.add_middleware(
         RequestBodyLimitMiddleware,
         max_bytes=settings.max_upload_bytes + 1024**2,
@@ -800,6 +914,7 @@ def create_app(settings: Settings | None = None, database: Database | None = Non
             "app_name": settings.app_name,
             "version": __version__,
             "csrf_token": request.app.state.csrf.issue(),
+            "root_path": settings.web_root_path,
             "active_states": {state.value for state in ACTIVE_JOB_STATES},
             **values,
         }
@@ -905,6 +1020,48 @@ def create_app(settings: Settings | None = None, database: Database | None = Non
             status_code=200 if healthy else 503,
             headers={"Cache-Control": "no-store"},
         )
+
+    @app.get("/api/platform/v1/summary")
+    def platform_summary() -> dict[str, Any]:
+        healthy = database.is_healthy()
+        return {
+            "contract_version": "1.0",
+            "module_id": "music",
+            "module_name": settings.app_name,
+            "module_version": __version__,
+            "health": {
+                "status": "healthy" if healthy else "unhealthy",
+                "summary": "Music is available." if healthy else "Music storage is unavailable.",
+            },
+            "capabilities": [
+                {"id": "music.library", "label": "Library", "enabled": True},
+                {"id": "music.import", "label": "Secure import", "enabled": True},
+                {"id": "music.requests", "label": "Requests", "enabled": True},
+            ],
+            "activity": [],
+        }
+
+    @app.get("/api/platform/v1/activity")
+    def platform_activity(session: Session = Depends(session_dependency)) -> dict[str, Any]:
+        metrics = _activity_metrics(session)
+        now = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+        labels = (
+            ("processing", "music.processing", "Music requests processing"),
+            ("needs_review", "music.review", "Music requests awaiting review"),
+            ("failed", "music.failed", "Music requests needing attention"),
+        )
+        activity = [
+            {
+                "id": f"music-{key}",
+                "kind": kind,
+                "title": title,
+                "status": f"{int(metrics.get(key, 0))} request(s)",
+                "occurred_at": now,
+            }
+            for key, kind, title in labels
+            if int(metrics.get(key, 0)) > 0
+        ]
+        return {"contract_version": "1.0", "module_id": "music", "activity": activity}
 
     @app.get("/", response_class=HTMLResponse)
     def dashboard(request: Request, session: Session = Depends(session_dependency)) -> HTMLResponse:

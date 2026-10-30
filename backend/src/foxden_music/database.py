@@ -16,7 +16,7 @@ from .config import Settings
 from .models import Base
 
 
-SCHEMA_VERSION = "2"
+SCHEMA_VERSION = "3"
 _STAGE_2_TABLES = frozenset(
     {
         "acquisition_jobs",
@@ -178,6 +178,43 @@ class Database:
                                 + ", ".join(sorted(missing))
                             )
                         version = 2
+                        connection.execute(
+                            text(
+                                "UPDATE database_metadata SET value = :version "
+                                "WHERE key = 'schema_version'"
+                            ),
+                            {"version": str(version)},
+                        )
+                        continue
+                    if version == 2:
+                        additions = {
+                            "parent_request_id": "VARCHAR(36)",
+                            "query_text": "TEXT",
+                            "manifest_json": "TEXT",
+                            "validation_json": "TEXT",
+                            "confidence": "FLOAT",
+                            "confidence_reasons_json": "TEXT",
+                            "required_action": "TEXT",
+                            "final_library_location": "VARCHAR(1500)",
+                            "approved_at": "DATETIME",
+                            "resolution_attempts": "INTEGER NOT NULL DEFAULT 0",
+                        }
+                        existing = {
+                            column["name"]
+                            for column in inspect(connection).get_columns("acquisition_jobs")
+                        }
+                        for name, sql_type in additions.items():
+                            if name not in existing:
+                                connection.execute(
+                                    text(f"ALTER TABLE acquisition_jobs ADD COLUMN {name} {sql_type}")
+                                )
+                        connection.execute(
+                            text(
+                                "CREATE INDEX IF NOT EXISTS ix_acquisition_jobs_parent_request_id "
+                                "ON acquisition_jobs (parent_request_id)"
+                            )
+                        )
+                        version = 3
                         connection.execute(
                             text(
                                 "UPDATE database_metadata SET value = :version "

@@ -20,6 +20,7 @@ from fastapi import (
     File,
     Form,
     HTTPException,
+    Query,
     Request,
     UploadFile,
     status,
@@ -49,6 +50,8 @@ from .config import Settings, get_settings
 from .database import Database
 from .enums import (
     ACTIVE_JOB_STATES,
+    AcquisitionProvider,
+    AcquisitionSourceType,
     AcquisitionState,
     JellyfinState,
     JobKind,
@@ -85,6 +88,7 @@ from .models import (
     utcnow,
 )
 from .state import InvalidStateTransition, add_event, retry_job
+from .request_workflow import create_request_jobs, parse_request_batch, parse_request_reference
 
 
 logger = logging.getLogger(__name__)
@@ -354,6 +358,7 @@ _PAGE_SIZE = 50
 _ACQUISITION_TERMINAL_STATES = frozenset(
     {
         AcquisitionState.COMPLETE.value,
+        AcquisitionState.REJECTED.value,
         AcquisitionState.FAILED.value,
         AcquisitionState.CANCELLED.value,
         AcquisitionState.NEEDS_REVIEW.value,
@@ -370,13 +375,22 @@ def _effective_acquisition_state(acquisition: AcquisitionJob) -> str:
     if import_job.state == JobState.COMPLETE.value:
         return AcquisitionState.COMPLETE.value
     if import_job.state == JobState.FAILED.value:
-        return AcquisitionState.FAILED.value
+        return AcquisitionState.REJECTED.value
     if import_job.state == JobState.CANCELLED.value:
         return AcquisitionState.CANCELLED.value
     if import_job.state == JobState.NEEDS_REVIEW.value:
         return AcquisitionState.NEEDS_REVIEW.value
+    if import_job.state in {
+        JobState.IMPORTING.value,
+        JobState.JELLYFIN_SCAN.value,
+    }:
+        return AcquisitionState.IMPORTING.value
     if import_job.state in {state.value for state in ACTIVE_JOB_STATES} | {JobState.QUEUED.value}:
-        return AcquisitionState.IMPORT_STARTED.value
+        return (
+            AcquisitionState.VALIDATING.value
+            if acquisition.query_text is not None
+            else AcquisitionState.IMPORT_STARTED.value
+        )
     return acquisition.state
 
 
@@ -424,17 +438,17 @@ def _library_metrics(session: Session) -> dict[str, int | float]:
 
 
 def _acquisition_state_expression() -> Any:
+    active_import_state = case(
+        (AcquisitionJob.query_text.is_not(None), AcquisitionState.VALIDATING.value),
+        else_=AcquisitionState.IMPORT_STARTED.value,
+    )
     return case(
         (Job.state == JobState.COMPLETE.value, AcquisitionState.COMPLETE.value),
-        (Job.state == JobState.FAILED.value, AcquisitionState.FAILED.value),
+        (Job.state == JobState.FAILED.value, AcquisitionState.REJECTED.value),
         (Job.state == JobState.CANCELLED.value, AcquisitionState.CANCELLED.value),
         (Job.state == JobState.NEEDS_REVIEW.value, AcquisitionState.NEEDS_REVIEW.value),
-        (
-            Job.state.in_(
-                tuple(state.value for state in ACTIVE_JOB_STATES) + (JobState.QUEUED.value,)
-            ),
-            AcquisitionState.IMPORT_STARTED.value,
-        ),
+        (Job.state.in_((JobState.IMPORTING.value, JobState.JELLYFIN_SCAN.value)), AcquisitionState.IMPORTING.value),
+        (Job.state.in_(tuple(state.value for state in ACTIVE_JOB_STATES) + (JobState.QUEUED.value,)), active_import_state),
         else_=AcquisitionJob.state,
     )
 
@@ -458,13 +472,19 @@ def _activity_metrics(session: Session) -> dict[str, int]:
         ).all()
     )
     return {
-        "queued": int(acquisition_counts.get(AcquisitionState.QUEUED.value, 0)),
+        "queued": int(
+            acquisition_counts.get(AcquisitionState.REQUESTED.value, 0)
+            + acquisition_counts.get(AcquisitionState.RESOLVING.value, 0)
+            + acquisition_counts.get(AcquisitionState.QUEUED.value, 0)
+        ),
         "waiting_for_user": int(
             acquisition_counts.get(AcquisitionState.WAITING_FOR_USER.value, 0)
             + acquisition_counts.get(AcquisitionState.WAITING_FOR_DOWNLOAD.value, 0)
         ),
         "processing": int(
-            acquisition_counts.get(AcquisitionState.IMPORT_STARTED.value, 0)
+            acquisition_counts.get(AcquisitionState.VALIDATING.value, 0)
+            + acquisition_counts.get(AcquisitionState.IMPORT_STARTED.value, 0)
+            + acquisition_counts.get(AcquisitionState.IMPORTING.value, 0)
             + sum(import_counts.get(state.value, 0) for state in ACTIVE_JOB_STATES)
             + import_counts.get(JobState.QUEUED.value, 0)
         ),
@@ -473,7 +493,8 @@ def _activity_metrics(session: Session) -> dict[str, int]:
             + import_counts.get(JobState.NEEDS_REVIEW.value, 0)
         ),
         "failed": int(
-            acquisition_counts.get(AcquisitionState.FAILED.value, 0)
+            acquisition_counts.get(AcquisitionState.REJECTED.value, 0)
+            + acquisition_counts.get(AcquisitionState.FAILED.value, 0)
             + import_counts.get(JobState.FAILED.value, 0)
         ),
     }
@@ -512,9 +533,12 @@ def _cancel_acquisition_before_handoff(
     if acquisition.state == AcquisitionState.CANCELLED.value:
         return acquisition
     eligible_states = {
+        AcquisitionState.REQUESTED.value,
+        AcquisitionState.RESOLVING.value,
         AcquisitionState.QUEUED.value,
         AcquisitionState.WAITING_FOR_USER.value,
         AcquisitionState.WAITING_FOR_DOWNLOAD.value,
+        AcquisitionState.ACQUIRING.value,
     }
     if acquisition.state not in eligible_states:
         raise HTTPException(
@@ -959,6 +983,8 @@ def create_app(settings: Settings | None = None, database: Database | None = Non
                 inbox_error=inbox_error,
                 remote_browser_url=settings.remote_browser_url,
                 source_urls="",
+                request_type="AUTO",
+                artist="",
                 preferred_format=PreferredFormat.FLAC.value,
                 form_error=None,
             ),
@@ -968,6 +994,8 @@ def create_app(settings: Settings | None = None, database: Database | None = Non
     def create_acquisitions(
         request: Request,
         source_urls: str = Form(...),
+        request_type: str | None = Form(None),
+        artist: str = Form(""),
         preferred_format: str = Form(PreferredFormat.FLAC.value),
         csrf_token: str = Form(...),
         session: Session = Depends(session_dependency),
@@ -976,16 +1004,30 @@ def create_app(settings: Settings | None = None, database: Database | None = Non
         try:
             if len(source_urls) > settings.spotify_batch_max_characters:
                 raise ValueError(
-                    "Spotify URL input exceeds the configured "
+                    "Music request input exceeds the configured "
                     f"{settings.spotify_batch_max_characters:,} character limit"
                 )
             requested_format = PreferredFormat(preferred_format)
-            acquisitions = create_acquisition_batch(
-                session,
-                source_urls,
-                preferred_format=requested_format,
-                max_items=settings.spotify_batch_max_urls,
-            )
+            if request_type is None:
+                # Backward-compatible API contract for v2.4 clients that only
+                # submit Spotify URLs. The v2.5 form always sends request_type.
+                acquisitions = create_acquisition_batch(
+                    session,
+                    source_urls,
+                    preferred_format=requested_format,
+                    max_items=settings.spotify_batch_max_urls,
+                )
+            else:
+                provider = AcquisitionProvider(settings.music_request_provider)
+                references = parse_request_batch(
+                    source_urls,
+                    request_type=request_type,
+                    artist=artist or None,
+                    max_items=settings.spotify_batch_max_urls,
+                )
+                acquisitions = create_request_jobs(
+                    session, references, preferred_format=requested_format, provider=provider
+                )
         except (ValueError, SpotifyReferenceError, AcquisitionBatchError) as exc:
             return templates.TemplateResponse(
                 request=request,
@@ -995,6 +1037,8 @@ def create_app(settings: Settings | None = None, database: Database | None = Non
                     request,
                     max_upload_bytes=settings.max_upload_bytes,
                     source_urls=source_urls,
+                    request_type=request_type or "AUTO",
+                    artist=artist,
                     preferred_format=preferred_format,
                     form_error=str(exc),
                 ),
@@ -1006,6 +1050,11 @@ def create_app(settings: Settings | None = None, database: Database | None = Non
                 created_roots.append(root)
                 root.mkdir(mode=0o750, exist_ok=False)
                 (root / "incoming").mkdir(mode=0o750, exist_ok=False)
+                (root / "downloads").mkdir(mode=0o750, exist_ok=False)
+                if settings.download_inbox_dir is not None:
+                    (settings.download_inbox_dir / acquisition.id).mkdir(
+                        mode=0o750, parents=True, exist_ok=True
+                    )
             session.commit()
             session.info[_SESSION_ALREADY_COMMITTED_KEY] = True
         except BaseException:
@@ -1075,18 +1124,49 @@ def create_app(settings: Settings | None = None, database: Database | None = Non
     def acquisition_detail(
         request: Request,
         acquisition_id: str,
+        from_browser: str | None = Query(None, alias="from"),
         session: Session = Depends(session_dependency),
     ) -> HTMLResponse:
         acquisition = load_acquisition(session, acquisition_id)
+        if (
+            from_browser is not None
+            and acquisition.query_text is None
+            and acquisition.state == AcquisitionState.ACQUIRING.value
+        ):
+            transition_acquisition(
+                session,
+                acquisition,
+                AcquisitionState.WAITING_FOR_DOWNLOAD,
+                "Returned from server browser; waiting for the completed download",
+            )
+        manifest = json.loads(acquisition.manifest_json) if acquisition.manifest_json else None
+        validation = json.loads(acquisition.validation_json) if acquisition.validation_json else None
+        confidence_reasons = (
+            json.loads(acquisition.confidence_reasons_json)
+            if acquisition.confidence_reasons_json
+            else []
+        )
         return templates.TemplateResponse(
             request=request,
             name="acquisitions/detail.html",
+            headers={"Cache-Control": "no-store"},
             context=common_context(
                 request,
                 acquisition=acquisition,
+                manifest=manifest,
+                validation=validation,
+                confidence_reasons=confidence_reasons,
                 effective_state=_effective_acquisition_state(acquisition),
-                provider_url=settings.spotidownloader_url,
+                provider_url=(
+                    settings.music_request_provider_url
+                    if acquisition.query_text
+                    else settings.spotidownloader_url
+                ),
+                auto_import_enabled=settings.music_request_auto_import,
                 remote_browser_url=settings.remote_browser_url,
+                automatic_inbox_enabled=bool(
+                    settings.download_inbox_auto_import and settings.download_inbox_dir
+                ),
                 timeline_events=_acquisition_timeline(acquisition),
                 max_upload_bytes=settings.max_upload_bytes,
             ),
@@ -1130,6 +1210,177 @@ def create_app(settings: Settings | None = None, database: Database | None = Non
             status_code=status.HTTP_303_SEE_OTHER,
         )
 
+    @app.post("/acquisitions/{acquisition_id}/confirm-resolution")
+    def confirm_acquisition_resolution(
+        request: Request,
+        acquisition_id: str,
+        csrf_token: str = Form(...),
+        session: Session = Depends(session_dependency),
+    ) -> RedirectResponse:
+        request.app.state.csrf.verify(csrf_token)
+        acquisition = load_acquisition(session, acquisition_id)
+        if acquisition.state != AcquisitionState.WAITING_FOR_USER.value or not acquisition.manifest_json:
+            raise HTTPException(status_code=409, detail="This request has no resolved manifest to confirm")
+        acquisition.required_action = (
+            "Open the contained browser and complete the provider step"
+            if acquisition.provider != AcquisitionProvider.FILESYSTEM_DROP.value
+            else None
+        )
+        transition_acquisition(
+            session,
+            acquisition,
+            AcquisitionState.ACQUIRING,
+            "Resolved MusicBrainz manifest confirmed",
+        )
+        return RedirectResponse(url=f"/acquisitions/{acquisition.id}", status_code=status.HTTP_303_SEE_OTHER)
+
+    @app.post("/acquisitions/{acquisition_id}/replace-reference")
+    def replace_acquisition_reference(
+        request: Request,
+        acquisition_id: str,
+        reference_url: str = Form(...),
+        csrf_token: str = Form(...),
+        session: Session = Depends(session_dependency),
+    ) -> RedirectResponse:
+        request.app.state.csrf.verify(csrf_token)
+        acquisition = load_acquisition(session, acquisition_id)
+        if acquisition.state != AcquisitionState.WAITING_FOR_USER.value:
+            raise HTTPException(status_code=409, detail="This request is not waiting for a metadata choice")
+        try:
+            reference = parse_request_reference(reference_url)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        if reference.source_type not in {
+            AcquisitionSourceType.RECORDING,
+            AcquisitionSourceType.RELEASE,
+        } or not reference.canonical_input.startswith("https://musicbrainz.org/"):
+            raise HTTPException(status_code=400, detail="Provide an exact MusicBrainz recording or release link")
+        acquisition.source_url = reference.canonical_input
+        acquisition.query_text = reference.canonical_input
+        acquisition.source_type = reference.source_type.value
+        acquisition.source_identifier = reference.identifier
+        acquisition.manifest_json = None
+        acquisition.validation_json = None
+        acquisition.confidence = None
+        acquisition.confidence_reasons_json = None
+        acquisition.required_action = None
+        acquisition.error_code = None
+        acquisition.error_message = None
+        transition_acquisition(
+            session,
+            acquisition,
+            AcquisitionState.REQUESTED,
+            "Exact MusicBrainz reference supplied; resolution requeued",
+        )
+        return RedirectResponse(url=f"/acquisitions/{acquisition.id}", status_code=status.HTTP_303_SEE_OTHER)
+
+    @app.post("/acquisitions/{acquisition_id}/approve-import")
+    def approve_acquisition_import(
+        request: Request,
+        acquisition_id: str,
+        csrf_token: str = Form(...),
+        session: Session = Depends(session_dependency),
+    ) -> RedirectResponse:
+        request.app.state.csrf.verify(csrf_token)
+        acquisition = load_acquisition(session, acquisition_id)
+        job = acquisition.import_job
+        if (
+            acquisition.state != AcquisitionState.NEEDS_REVIEW.value
+            or job is None
+            or job.state != JobState.NEEDS_REVIEW.value
+            or job.review_kind != "REQUEST_AUTO_IMPORT"
+        ):
+            raise HTTPException(status_code=409, detail="This request is not awaiting import approval")
+        acquisition.approved_at = utcnow()
+        acquisition.required_action = None
+        retry_job(session, job, message="Validated music request approved for atomic import")
+        transition_acquisition(
+            session,
+            acquisition,
+            AcquisitionState.VALIDATING,
+            "Import approved; validation will be repeated before publishing",
+        )
+        return RedirectResponse(url=f"/acquisitions/{acquisition.id}", status_code=status.HTTP_303_SEE_OTHER)
+
+    @app.get("/acquisitions/{acquisition_id}/browser", response_class=HTMLResponse)
+    def acquisition_browser(
+        request: Request,
+        acquisition_id: str,
+        session: Session = Depends(session_dependency),
+    ) -> HTMLResponse:
+        acquisition = load_acquisition(session, acquisition_id)
+        if not settings.remote_browser_url:
+            raise HTTPException(status_code=409, detail="Server browser is not configured")
+        return templates.TemplateResponse(
+            request=request,
+            name="acquisitions/browser.html",
+            headers={"Cache-Control": "no-store"},
+            context=common_context(
+                request, acquisition=acquisition, browser_url="/server-browser/",
+                provider_url=(
+                    settings.music_request_provider_url
+                    if acquisition.query_text
+                    else settings.spotidownloader_url
+                ),
+            ),
+        )
+
+    @app.post("/acquisitions/{acquisition_id}/begin-download")
+    def begin_acquisition_download(
+        request: Request,
+        acquisition_id: str,
+        csrf_token: str = Form(...),
+        session: Session = Depends(session_dependency),
+    ) -> HTMLResponse:
+        request.app.state.csrf.verify(csrf_token)
+        acquisition = load_acquisition(session, acquisition_id)
+        if not settings.download_inbox_auto_import or settings.download_inbox_dir is None:
+            raise HTTPException(status_code=409, detail="Automatic download inbox is not configured")
+        if acquisition.associated_import_job_id is not None:
+            raise HTTPException(status_code=409, detail="This acquisition already has an import")
+        if acquisition.state not in {
+            AcquisitionState.QUEUED.value,
+            AcquisitionState.WAITING_FOR_USER.value,
+            AcquisitionState.WAITING_FOR_DOWNLOAD.value,
+            AcquisitionState.ACQUIRING.value,
+        }:
+            raise HTTPException(status_code=409, detail="This acquisition cannot start a download")
+        another_waiting = session.scalar(
+            select(AcquisitionJob.id).where(
+                AcquisitionJob.id != acquisition.id,
+                AcquisitionJob.state.in_(
+                    (AcquisitionState.WAITING_FOR_DOWNLOAD.value, AcquisitionState.ACQUIRING.value)
+                ),
+                AcquisitionJob.associated_import_job_id.is_(None),
+            )
+        )
+        if another_waiting:
+            raise HTTPException(
+                status_code=409,
+                detail="Finish or cancel the current server download before starting another",
+            )
+        if acquisition.state != AcquisitionState.ACQUIRING.value:
+            transition_acquisition(
+                session,
+                acquisition,
+                AcquisitionState.ACQUIRING,
+                "Server browser handoff started; watching for a completed download",
+            )
+        destination = f"/acquisitions/{acquisition.id}/browser"
+        # Return an actual same-origin document before navigating away. This
+        # works even when a client has an older cached app.js and avoids Firefox
+        # treating an external redirect as a blocked cross-origin form action.
+        return templates.TemplateResponse(
+            request=request,
+            name="acquisitions/browser_handoff.html",
+            headers={"Cache-Control": "no-store"},
+            context=common_context(
+                request,
+                acquisition=acquisition,
+                browser_url=destination,
+            ),
+        )
+
     @app.post("/acquisitions/{acquisition_id}/upload")
     async def acquisition_upload(
         request: Request,
@@ -1146,6 +1397,7 @@ def create_app(settings: Settings | None = None, database: Database | None = Non
             AcquisitionState.QUEUED.value,
             AcquisitionState.WAITING_FOR_USER.value,
             AcquisitionState.WAITING_FOR_DOWNLOAD.value,
+            AcquisitionState.ACQUIRING.value,
         }:
             raise HTTPException(status_code=409, detail="This acquisition no longer accepts uploads")
         source_reference = acquisition.source_url
@@ -1162,7 +1414,7 @@ def create_app(settings: Settings | None = None, database: Database | None = Non
         import_job = Job(
             id=job_id,
             kind=JobKind.ALBUM_IMPORT.value,
-            source_type=SourceType.SPOTIFY.value,
+            source_type=SourceType.MUSIC_REQUEST.value if acquisition.query_text else SourceType.SPOTIFY.value,
             state=JobState.QUEUED.value,
             display_name=display_name,
             source_filename=display_name,
@@ -1171,6 +1423,32 @@ def create_app(settings: Settings | None = None, database: Database | None = Non
         )
         session.add(import_job)
         session.flush()
+        if acquisition.manifest_json:
+            manifest = json.loads(acquisition.manifest_json)
+            release_id = manifest.get("release_id")
+            payload = manifest.get("musicbrainz_payload")
+            if release_id and isinstance(payload, dict):
+                edition = manifest.get("album_edition") or {}
+                session.add(
+                    ReleaseCandidate(
+                        job_id=job_id,
+                        musicbrainz_release_id=str(release_id),
+                        title=str(edition.get("title") or acquisition.display_title),
+                        artist_credit=str(manifest.get("artist") or acquisition.artist or ""),
+                        release_date=edition.get("date"),
+                        country=edition.get("country"),
+                        status=edition.get("status"),
+                        disambiguation=edition.get("disambiguation"),
+                        media_summary=None,
+                        track_count=len(manifest.get("expected_tracks") or []),
+                        source_score=float(acquisition.confidence or 0),
+                        score=float(acquisition.confidence or 0),
+                        payload_json=json.dumps(payload, ensure_ascii=False, separators=(",", ":")),
+                        selected=True,
+                    )
+                )
+                import_job.selected_release_id = str(release_id)
+                import_job.match_confidence = acquisition.confidence
         now = utcnow()
         claimed = session.execute(
             update(AcquisitionJob)
@@ -1182,6 +1460,7 @@ def create_app(settings: Settings | None = None, database: Database | None = Non
                         AcquisitionState.QUEUED.value,
                         AcquisitionState.WAITING_FOR_USER.value,
                         AcquisitionState.WAITING_FOR_DOWNLOAD.value,
+                        AcquisitionState.ACQUIRING.value,
                     )
                 ),
             )
@@ -1211,18 +1490,20 @@ def create_app(settings: Settings | None = None, database: Database | None = Non
             )
         )
         acquisition.associated_import_job_id = job_id
-        transition_acquisition(
-            session,
-            acquisition,
-            AcquisitionState.FILE_RECEIVED,
-            "Downloaded file received and safely staged",
-        )
-        transition_acquisition(
-            session,
-            acquisition,
-            AcquisitionState.IMPORT_STARTED,
-            "Stage 1 import queued",
-        )
+        if acquisition.query_text:
+            transition_acquisition(
+                session,
+                acquisition,
+                AcquisitionState.VALIDATING,
+                "Downloaded file isolated in request staging; validation queued",
+            )
+        else:
+            transition_acquisition(
+                session,
+                acquisition,
+                AcquisitionState.IMPORT_STARTED,
+                "Upload handed to the secure importer",
+            )
         add_event(
             session,
             import_job,

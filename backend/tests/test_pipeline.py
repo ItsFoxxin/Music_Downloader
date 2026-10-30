@@ -9,9 +9,9 @@ import pytest
 
 from foxden_music.audio import AudioInspection, sha256_file
 from foxden_music.duplicates import assess_duplicates, normalized_track_identity, normalized_track_slot
-from foxden_music.enums import JellyfinState, JobState
+from foxden_music.enums import AcquisitionState, JellyfinState, JobState
 from foxden_music.metadata import NormalizedTrackMetadata, TagHints, serialize_hints
-from foxden_music.models import Job, LibraryTrack, ReleaseCandidate, Track
+from foxden_music.models import AcquisitionJob, Job, LibraryTrack, ReleaseCandidate, Track
 from foxden_music.pipeline import (
     ReviewRequired,
     RetryablePipelineError,
@@ -111,6 +111,56 @@ def test_synthetic_end_to_end_import_and_exact_duplicate_skip(
         assert second.skipped_count == 1
         assert second.imported_count == 0
         assert session.query(LibraryTrack).count() == 1
+
+
+def test_music_request_persists_validation_and_stops_before_publish(
+    settings, database, monkeypatch
+) -> None:
+    job_id = "10000000-0000-0000-0000-000000000003"
+    source = _queue_single_track(database, settings, job_id=job_id)
+    _mock_pipeline(monkeypatch, source)
+    manifest = {
+        "artist": "Stray Kids",
+        "release_id": "f21c2200-85ae-4aaa-94d9-e80079a1e705",
+        "album_edition": {"title": "ATE", "date": "2024-07-19"},
+        "expected_tracks": [{
+            "disc_number": 1,
+            "track_number": 1,
+            "title": "MOUNTAINS",
+            "artist": "Stray Kids",
+            "recording_id": "297dfc0d-5fec-7b20-1653-d1857ca4b580",
+        }],
+    }
+    with database.session() as session:
+        session.add(AcquisitionJob(
+            provider="MANUAL_BROWSER",
+            source_url="https://musicbrainz.org/release/f21c2200-85ae-4aaa-94d9-e80079a1e705",
+            source_type="RELEASE",
+            source_identifier="f21c2200-85ae-4aaa-94d9-e80079a1e705",
+            display_title="Stray Kids - ATE",
+            query_text="https://musicbrainz.org/release/f21c2200-85ae-4aaa-94d9-e80079a1e705",
+            manifest_json=json.dumps(manifest),
+            confidence=100,
+            confidence_reasons_json=json.dumps(["Exact MusicBrainz release link"]),
+            state=AcquisitionState.VALIDATING.value,
+            preferred_format="FLAC",
+            associated_import_job_id=job_id,
+            acquisition_relative_directory="acquisitions/request-gate",
+        ))
+
+    process_job(database, settings, job_id)
+
+    with database.session() as session:
+        job = session.get(Job, job_id)
+        request = session.query(AcquisitionJob).one()
+        evidence = json.loads(request.validation_json or "{}")
+        assert job is not None
+        assert job.state == JobState.NEEDS_REVIEW.value
+        assert job.review_kind == "REQUEST_AUTO_IMPORT"
+        assert evidence["metadata_matches"] is True
+        assert evidence["quality_matches"] is True
+        assert evidence["duplicates_clear"] is True
+        assert not any(path for path in settings.music_dir.iterdir() if path.name != ".imports")
 
 
 def test_processing_failure_never_creates_final_album(settings, database, monkeypatch) -> None:
@@ -368,6 +418,98 @@ def test_release_duration_matching_allows_clear_title_match_with_drift() -> None
     assert not _release_duration_compatible(track, {"title": "Different Song", "duration": 109.0})
 
 
+def test_recording_scoped_candidate_tags_one_track_from_two_track_single(
+    settings, database
+) -> None:
+    job_id = "30000000-0000-0000-0000-000000000060"
+    recording_id = "297dfc0d-5fec-7b20-1653-d1857ca4b580"
+    instrumental_id = "397dfc0d-5fec-7b20-1653-d1857ca4b581"
+    incoming = settings.jobs_dir / job_id / "incoming"
+    incoming.mkdir(parents=True)
+    source = incoming / "Night Run.flac"
+    source.write_bytes(b"synthetic")
+    payload = {
+        "id": "f21c2200-85ae-4aaa-94d9-e80079a1e705",
+        "title": "Den Songs",
+        "date": "2024-10-15",
+        "artist-credit": [{"name": "Fox Artist", "joinphrase": ""}],
+        "_foxden_requested_recording_id": recording_id,
+        "media": [{
+            "position": 1,
+            "track-count": 2,
+            "tracks": [
+                {
+                    "position": 1,
+                    "title": "Night Run",
+                    "length": 180000,
+                    "recording": {
+                        "id": recording_id,
+                        "title": "Night Run",
+                        "artist-credit": [{"name": "Fox Artist", "joinphrase": ""}],
+                    },
+                },
+                {
+                    "position": 2,
+                    "title": "Night Run (Instrumental)",
+                    "length": 181000,
+                    "recording": {
+                        "id": instrumental_id,
+                        "title": "Night Run (Instrumental)",
+                        "artist-credit": [{"name": "Fox Artist", "joinphrase": ""}],
+                    },
+                },
+            ],
+        }],
+    }
+    with database.session() as session:
+        job = Job(
+            id=job_id,
+            state=JobState.TAGGING.value,
+            display_name="Night Run",
+            source_filename="Night Run.flac",
+            source_relative_path="incoming/Night Run.flac",
+            selected_release_id=payload["id"],
+        )
+        session.add(job)
+        session.flush()
+        track = _track(job_id, sha="6" * 64, title="Night Run")
+        track.duration_seconds = 180.0
+        track.original_tags_json = serialize_hints(
+            TagHints(
+                title="Night Run",
+                artist="Fox Artist",
+                album_artist="Fox Artist",
+                album="Den Songs",
+                track_number=1,
+                track_total=1,
+                disc_number=1,
+                disc_total=1,
+            )
+        )
+        candidate = ReleaseCandidate(
+            job_id=job_id,
+            musicbrainz_release_id=payload["id"],
+            title="Den Songs",
+            artist_credit="Fox Artist",
+            release_date="2024-10-15",
+            track_count=1,
+            source_score=98,
+            score=98,
+            payload_json=json.dumps(payload),
+            selected=True,
+        )
+        session.add_all([track, candidate])
+        session.flush()
+
+        plans = _metadata_plans(settings, job, candidate)
+
+    assert len(plans) == 1
+    assert plans[0].metadata.title == "Night Run"
+    assert plans[0].metadata.musicbrainz_recording_id == recording_id
+    assert plans[0].metadata.track_number == 1
+    assert plans[0].metadata.track_total == 2
+
+
 def test_incoming_partial_album_claim_requires_review(settings, database) -> None:
     job_id = "30000000-0000-0000-0000-000000000006"
     (settings.jobs_dir / job_id).mkdir(parents=True)
@@ -553,6 +695,11 @@ def test_selected_edition_album_identity_comes_from_musicbrainz_candidate(
 ) -> None:
     job_id = "30000000-0000-0000-0000-000000000010"
     release_id = "22345678-1234-1234-1234-123456789abc"
+    first_working = settings.jobs_dir / job_id / "working" / "000001.flac"
+    second_working = settings.jobs_dir / job_id / "working" / "000002.flac"
+    first_working.parent.mkdir(parents=True)
+    first_working.write_bytes(b"tagged track one")
+    second_working.write_bytes(b"tagged track two")
     with database.session() as session:
         session.add(
             Job(
@@ -585,6 +732,10 @@ def test_selected_edition_album_identity_comes_from_musicbrainz_candidate(
         )
         first = _track(job_id, sha="1" * 64, title="Track One")
         second = _track(job_id, sha="2" * 64, title="Track Two")
+        first.working_relative_path = "working/000001.flac"
+        first.final_sha256 = sha256_file(first_working)
+        second.working_relative_path = "working/000002.flac"
+        second.final_sha256 = sha256_file(second_working)
         first.album_artist = "Wrong Artist"
         first.album = "Wrong Album"
         first.year = 1970

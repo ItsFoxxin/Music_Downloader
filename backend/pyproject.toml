@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "foxden-music"
-version = "2.2.5"
+version = "2.5.1"
 description = "A security-focused, self-hosted music importer and Jellyfin library manager"
 readme = "README.md"
 requires-python = ">=3.12"
@@ -17,7 +17,7 @@ dependencies = [
   "python-multipart==0.0.32",
   "httpx==0.28.1",
   "mutagen==1.48.1",
-  "Pillow==12.3.0",
+  "Pillow==13.0.0",
   "itsdangerous==2.2.0",
 ]
 

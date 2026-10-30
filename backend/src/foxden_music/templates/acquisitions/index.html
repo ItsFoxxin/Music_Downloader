@@ -2,8 +2,8 @@
 {% block title %}Acquisition queue · {{ app_name }}{% endblock %}
 {% block content %}
 <section class="page-heading split">
-  <div><p class="eyebrow">Manual acquisition</p><h1>Queue</h1><p>Persistent requests waiting for a download or moving through the Stage 1 importer.</p></div>
-  <a class="button primary" href="/add">Add Spotify links</a>
+  <div><p class="eyebrow">Music requests</p><h1>Request queue</h1><p>Requested → Resolving → Acquiring → Validating → Needs Review / Importing → Complete</p></div>
+  <a class="button primary" href="/add">Request music</a>
 </section>
 {% if created %}<div class="success-banner" role="status">{{ created }} acquisition{{ '' if created == 1 else 's' }} added to the queue.</div>{% endif %}
 
@@ -17,7 +17,7 @@
 </form>
 
 <section class="panel table-panel" aria-labelledby="queue-heading">
-  <div class="panel-heading"><div><p class="eyebrow">{{ total }} requests</p><h2 id="queue-heading">Acquisition jobs</h2></div></div>
+  <div class="panel-heading"><div><p class="eyebrow">{{ total }} requests</p><h2 id="queue-heading">Music requests</h2></div></div>
   <div class="table-wrap">
     <table>
       <caption class="sr-only">Acquisition jobs</caption>

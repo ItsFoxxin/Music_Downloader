@@ -4,22 +4,30 @@
 <section class="page-heading">
   <p class="eyebrow">Acquisition and import</p>
   <h1>Add music</h1>
-  <p>Queue Spotify links for a guided manual download, or send a file directly into the proven Stage 1 importer.</p>
+  <p>Request a song, album, artist, playlist, Spotify link, or MusicBrainz link. Fox Den resolves it before any file can reach the secure importer.</p>
 </section>
 
 <div class="add-grid">
   <form class="panel form-stack" action="/acquisitions" method="post">
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-    <div><p class="eyebrow">Acquisition queue</p><h2>Queue Spotify links</h2><p class="muted">Paste one track, album, or playlist URL per line. Fox Den Music stores the request but does not contact Spotify.</p></div>
+    <div><p class="eyebrow">Automated request workflow</p><h2>Request music</h2><p class="muted">Use one request per line. Links are detected automatically; name searches use MusicBrainz.</p></div>
     {% if form_error %}<div class="form-error" role="alert"><strong>Nothing was queued.</strong><span>{{ form_error }}</span></div>{% endif %}
-    <label for="source-urls"><strong>Spotify URLs</strong><span>Only https://open.spotify.com track, album, and playlist links are accepted.</span></label>
-    <textarea id="source-urls" name="source_urls" rows="9" required spellcheck="false" placeholder="https://open.spotify.com/album/...&#10;https://open.spotify.com/track/...">{{ source_urls }}</textarea>
+    <label for="request-type"><strong>Request type</strong><span>Choose album for an artist/album name. Links override this selection.</span></label>
+    <select id="request-type" name="request_type">
+      {% for value, label in [('AUTO', 'Song / automatic'), ('ALBUM', 'Album'), ('ARTIST', 'Artist catalog')] %}
+      <option value="{{ value }}"{% if request_type == value %} selected{% endif %}>{{ label }}</option>
+      {% endfor %}
+    </select>
+    <label for="artist"><strong>Artist (optional)</strong><span>Useful when the request lines contain only song or album titles.</span></label>
+    <input id="artist" name="artist" value="{{ artist }}" maxlength="500" placeholder="Artist name">
+    <label for="source-urls"><strong>Music requests</strong><span>Examples: <code>Artist - Song</code>, <code>Artist - Album</code>, Spotify links, or MusicBrainz links.</span></label>
+    <textarea id="source-urls" name="source_urls" rows="9" required spellcheck="false" placeholder="Artist - Song&#10;https://open.spotify.com/album/...&#10;https://musicbrainz.org/release/...">{{ source_urls }}</textarea>
     <label for="preferred-format"><strong>Preferred format</strong><span>The downloader’s available formats may vary.</span></label>
     <select id="preferred-format" name="preferred_format">
       <option value="FLAC"{% if preferred_format == 'FLAC' %} selected{% endif %}>FLAC</option>
       <option value="MP3_320"{% if preferred_format == 'MP3_320' %} selected{% endif %}>MP3 320</option>
     </select>
-    <button class="button primary" type="submit">Add all to queue</button>
+    <button class="button primary" type="submit">Request music</button>
   </form>
 
   <form class="panel upload-form form-stack" action="/imports" method="post" enctype="multipart/form-data" data-upload-form data-max-upload-bytes="{{ max_upload_bytes }}">

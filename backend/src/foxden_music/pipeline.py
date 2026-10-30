@@ -26,8 +26,9 @@ from .cache import ArtworkFileCache, DatabaseJsonCache
 from .config import Settings
 from .database import Database
 from .duplicates import assess_duplicates, normalized_track_identity, normalized_track_slot
-from .enums import JellyfinState, JobState
+from .enums import DuplicateStatus, JellyfinState, JobState, PreferredFormat
 from .filenames import build_track_filename, sanitize_component
+from .fingerprint import FingerprintError, fingerprint_audio
 from .jellyfin import JellyfinRefreshResult, refresh_jellyfin_library
 from .library import (
     LibraryConflictError,
@@ -49,7 +50,7 @@ from .metadata import (
     serialize_hints,
     write_tags,
 )
-from .models import Job, LibraryTrack, ReleaseCandidate, Track
+from .models import AcquisitionJob, Job, LibraryTrack, ReleaseCandidate, Track
 from .musicbrainz import (
     MusicBrainzClient,
     MusicBrainzConfigurationError,
@@ -65,6 +66,10 @@ logger = logging.getLogger(__name__)
 class PipelineError(RuntimeError):
     code = "PIPELINE_ERROR"
     retryable = False
+
+
+class RequestValidationRejected(PipelineError):
+    code = "REQUEST_VALIDATION_REJECTED"
 
 
 class RetryablePipelineError(PipelineError):
@@ -332,6 +337,198 @@ def _pause_for_review(database: Database, job_id: str, review: ReviewRequired) -
         job.review_kind = review.kind
         job.review_reason = review.reason
         transition_job(session, job, JobState.NEEDS_REVIEW, review.reason, level="WARNING")
+
+
+def _apply_music_request_import_gate(
+    database: Database, settings: Settings, job_id: str
+) -> None:
+    """Persist validation evidence and stop before publishing unless policy allows it."""
+
+    rejected = False
+    with database.session() as session:
+        request = session.scalar(
+            select(AcquisitionJob).where(AcquisitionJob.associated_import_job_id == job_id)
+        )
+        if request is None or request.query_text is None:
+            return
+        job = session.scalar(
+            select(Job).where(Job.id == job_id).options(selectinload(Job.tracks))
+        )
+        assert job is not None
+        manifest = json.loads(request.manifest_json) if request.manifest_json else {}
+        expected = manifest.get("expected_tracks") if isinstance(manifest, Mapping) else []
+        expected = expected if isinstance(expected, list) else []
+        actual = [
+            {
+                "filename": track.original_filename,
+                "title": track.title,
+                "artist": track.artist,
+                "album_artist": track.album_artist,
+                "album": track.album,
+                "disc_number": track.disc_number,
+                "track_number": track.track_number,
+                "track_total": track.track_total,
+                "year": track.year,
+                "isrc": track.isrc,
+                "musicbrainz_recording_id": track.musicbrainz_recording_id,
+                "musicbrainz_release_id": track.musicbrainz_release_id,
+                "codec": track.codec,
+                "duration_seconds": track.duration_seconds,
+                "bitrate": track.bitrate,
+                "sample_rate": track.sample_rate,
+                "channels": track.channels,
+                "sha256": track.sha256,
+                "duplicate_status": track.duplicate_status,
+            }
+            for track in job.tracks
+        ]
+        reasons = json.loads(request.confidence_reasons_json or "[]")
+        count_matches = not expected or len(expected) == len(actual)
+        if not count_matches:
+            reasons.append(f"Expected {len(expected)} tracks but acquired {len(actual)}")
+        low_bitrate = [
+            row
+            for row in actual
+            if row["bitrate"] and row["bitrate"] < settings.music_request_min_bitrate
+        ]
+        if low_bitrate:
+            reasons.append(f"{len(low_bitrate)} file(s) are below the configured bitrate floor")
+        expected_by_slot = {
+            (int(row.get("disc_number") or 1), int(row.get("track_number") or 0)): row
+            for row in expected
+            if isinstance(row, Mapping) and row.get("track_number")
+        }
+        edition = manifest.get("album_edition") if isinstance(manifest, Mapping) else None
+        edition = edition if isinstance(edition, Mapping) else {}
+        expected_album = _match_text(edition.get("title"))
+        expected_album_artist = _match_text(manifest.get("artist")) if isinstance(manifest, Mapping) else ""
+        expected_year_text = str(edition.get("date") or "")[:4]
+        expected_year = int(expected_year_text) if expected_year_text.isdigit() else None
+        metadata_matches = count_matches
+        for row in actual:
+            expected_row = expected_by_slot.get(
+                (int(row["disc_number"] or 1), int(row["track_number"] or 0))
+            )
+            if expected_row is None and expected:
+                metadata_matches = False
+                continue
+            if expected_row is not None:
+                metadata_matches = metadata_matches and (
+                    _match_text(row["title"]) == _match_text(expected_row.get("title"))
+                    and (
+                        not expected_row.get("artist")
+                        or _match_text(row["artist"]) == _match_text(expected_row.get("artist"))
+                    )
+                )
+            metadata_matches = metadata_matches and (
+                (not expected_album or _match_text(row["album"]) == expected_album)
+                and (
+                    not expected_album_artist
+                    or _match_text(row["album_artist"]) == expected_album_artist
+                )
+                and (expected_year is None or row["year"] == expected_year)
+            )
+        if not metadata_matches:
+            reasons.append("Prepared artist, album, title, year, or track positions do not match the manifest")
+        preferred_codec = (
+            "flac"
+            if request.preferred_format == PreferredFormat.FLAC.value
+            else "mp3"
+        )
+        quality_matches = all(
+            _match_text(row["codec"]) == preferred_codec
+            and row["bitrate"] is not None
+            and row["sample_rate"] is not None
+            and row["sample_rate"] >= settings.music_request_preferred_sample_rate
+            and row["channels"] is not None
+            and row["channels"] > 0
+            for row in actual
+        )
+        if not quality_matches:
+            reasons.append("Codec or measured audio quality does not meet the configured request preference")
+        duplicates_clear = all(
+            row["duplicate_status"] == DuplicateStatus.NONE.value for row in actual
+        )
+        if not duplicates_clear:
+            reasons.append("One or more acquired files conflict with existing or in-job audio")
+        fingerprints: list[dict[str, Any]] = []
+        fingerprint_error: str | None = None
+        fingerprint_mismatch = False
+        if settings.chromaprint_enabled:
+            expected_recording_ids = {
+                str(row.get("recording_id"))
+                for row in expected
+                if isinstance(row, Mapping) and row.get("recording_id")
+            }
+            try:
+                job_root = (settings.jobs_dir / job_id).resolve(strict=True)
+                for track in job.tracks:
+                    source = (job_root / track.source_relative_path).resolve(strict=True)
+                    source.relative_to(job_root)
+                    evidence = fingerprint_audio(source, settings)
+                    fingerprints.append(evidence)
+                    remote_ids = set(evidence.get("acoustid_recording_ids") or [])
+                    if remote_ids and expected_recording_ids and remote_ids.isdisjoint(expected_recording_ids):
+                        fingerprint_mismatch = True
+                if fingerprint_mismatch:
+                    reasons.append("AcoustID fingerprint did not match the resolved MusicBrainz recording")
+            except (FingerprintError, OSError, ValueError) as exc:
+                fingerprint_error = str(exc)
+                reasons.append(fingerprint_error)
+        request.validation_json = json.dumps(
+            {
+                "readable_audio": True,
+                "archive_and_types_safe": True,
+                "track_count_matches": count_matches,
+                "metadata_matches": metadata_matches,
+                "quality_matches": quality_matches,
+                "duplicates_clear": duplicates_clear,
+                "files": actual,
+                "chromaprint": (
+                    "failed" if fingerprint_error else
+                    "mismatch" if fingerprint_mismatch else
+                    "matched" if settings.chromaprint_enabled and settings.acoustid_api_key else
+                    "local_only" if settings.chromaprint_enabled else
+                    "not_configured"
+                ),
+                "fingerprints": fingerprints,
+            },
+            ensure_ascii=False,
+            separators=(",", ":"),
+        )
+        request.confidence_reasons_json = json.dumps(reasons, ensure_ascii=False)
+        confidence = float(request.confidence or 0)
+        objective_allows = (
+            count_matches
+            and metadata_matches
+            and quality_matches
+            and duplicates_clear
+            and not low_bitrate
+            and not fingerprint_error
+            and not fingerprint_mismatch
+        )
+        policy_allows = (
+            settings.music_request_auto_import
+            and confidence >= settings.music_request_high_confidence_threshold
+            and objective_allows
+            and not any("requires review" in str(reason).casefold() for reason in reasons)
+        )
+        if objective_allows and (request.approved_at is not None or policy_allows):
+            request.required_action = None
+            return
+        if not objective_allows:
+            rejected = True
+            request.required_action = "Replace the acquired files; objective validation failed"
+        else:
+            request.required_action = "Review validation results and approve this import"
+    if rejected:
+        raise RequestValidationRejected(
+            "Acquired files failed request metadata, quality, duplicate, or fingerprint validation."
+        )
+    raise ReviewRequired(
+        "Validation passed, but automatic request importing is disabled or confidence policy requires approval.",
+        kind="REQUEST_AUTO_IMPORT",
+    )
 
 
 def _choose_release(database: Database, settings: Settings, job_id: str) -> ReleaseCandidate | None:
@@ -742,6 +939,18 @@ def _metadata_plans(
         except json.JSONDecodeError as exc:
             raise ReviewRequired("The cached MusicBrainz release data was invalid. Choose the release again.") from exc
         release_tracks = _release_track_rows(payload)
+        requested_recording_id = str(payload.get("_foxden_requested_recording_id") or "")
+        if requested_recording_id:
+            release_tracks = [
+                row
+                for row in release_tracks
+                if str(row.get("recording_id") or "") == requested_recording_id
+            ]
+            if len(release_tracks) != 1:
+                raise ReviewRequired(
+                    "The requested recording is missing or repeated in the selected release. Choose another edition.",
+                    kind="METADATA",
+                )
         if len(release_tracks) != len(ordered_tracks):
             raise ReviewRequired(
                 f"The selected release has {len(release_tracks)} tracks but the import has {len(ordered_tracks)}. Choose another edition."
@@ -1299,6 +1508,11 @@ def process_job(database: Database, settings: Settings, job_id: str) -> None:
             return
         _transition(database, job_id, JobState.VALIDATING, "Verifying complete prepared album")
         verify_prepared_album(prepared)
+        try:
+            _apply_music_request_import_gate(database, settings, job_id)
+        except ReviewRequired as review:
+            _pause_for_review(database, job_id, review)
+            return
         _transition(database, job_id, JobState.IMPORTING, "Atomically publishing album to the music library")
         destination, reconciled = commit_album(music_root=settings.music_dir, album=prepared)
         try:

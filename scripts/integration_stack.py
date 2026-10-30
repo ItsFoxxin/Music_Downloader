@@ -13,7 +13,7 @@ import sys
 ROOT = Path(__file__).resolve().parent.parent
 RUNTIME = ROOT / "integration" / ".runtime"
 COMPOSE = ROOT / "integration" / "compose.yaml"
-APPROVED_MUSIC_COMMIT = "478c1a6fe082aecd338fe81954b7946f02cbd007"
+APPROVED_MUSIC_COMMIT = "85904c45a79421cd4a1e00378c231bb08c1a03fc"
 
 
 def run(*args: str, cwd: Path = ROOT, capture: bool = False) -> str:

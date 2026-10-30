@@ -54,7 +54,7 @@ cookie, or proof that any Docker-network caller is trusted.
 The authoritative Music integration is developed on a separate branch based on
 recorded `Music_Downloader/dev` commit
 `b4bbffbb2a739a8b78ec6b194416b8d4fb5e09ea`. The approved integration revision
-is `478c1a6fe082aecd338fe81954b7946f02cbd007`. The local runner rejects any
+is `85904c45a79421cd4a1e00378c231bb08c1a03fc`. The local runner rejects any
 other Music `HEAD` by default; `--music-commit` is reserved for an explicitly
 approved replacement release. Music verifies Portal public JWKs, keeps
 standalone behavior available when integration is disabled, supports the

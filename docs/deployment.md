@@ -14,6 +14,12 @@ secret files.
 `--browser` adds the optional contained browser. Disabled profiles do not make
 their configuration mandatory.
 
+Application containers join a private internal module network plus a separate
+outbound network for metadata providers, external qBittorrent/Jellyfin, and
+OIDC. They publish no backend ports. Ingress is the only public route. Managed
+qBittorrent shares Gluetun's network namespace and cannot attach to an
+independent network.
+
 ## Initial configuration
 
 1. Copy the matching file from `deploy/examples` to an untracked `.env`.

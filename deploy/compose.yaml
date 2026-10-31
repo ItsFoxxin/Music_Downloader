@@ -8,7 +8,7 @@ x-hardening: &hardening
   cap_drop: [ALL]
   security_opt: [no-new-privileges:true]
   tmpfs: [/tmp:rw,noexec,nosuid,nodev,size=256m,mode=1777]
-  networks: [platform]
+  networks: [platform, outbound]
   mem_limit: "${FOXDEN_APP_MEMORY_LIMIT:-1g}"
   cpus: "${FOXDEN_APP_CPUS:-2.0}"
 
@@ -213,7 +213,7 @@ services:
       - {type: bind, source: "${BROWSER_CONFIG_PATH:-./.disabled/browser-config}", target: /config, bind: {create_host_path: false}}
       - {type: bind, source: "${MUSIC_DOWNLOAD_PATH:-./.disabled/music-downloads}", target: /downloads, bind: {create_host_path: false}}
     expose: ["5800"]
-    networks: [platform]
+    networks: [platform, outbound]
     mem_limit: "${FOXDEN_BROWSER_MEMORY_LIMIT:-2g}"
     cpus: "${FOXDEN_BROWSER_CPUS:-2.0}"
 
@@ -225,7 +225,7 @@ services:
     cap_add: [NET_ADMIN]
     devices: [/dev/net/tun:/dev/net/tun]
     security_opt: [no-new-privileges:true]
-    networks: [platform]
+    networks: [platform, outbound]
     mem_limit: "${FOXDEN_VPN_MEMORY_LIMIT:-512m}"
     cpus: "${FOXDEN_VPN_CPUS:-1.0}"
     ports: ["${QBIT_BIND_IP:-127.0.0.1}:${QBIT_WEB_PORT:-8081}:8080/tcp"]
@@ -277,3 +277,4 @@ services:
 networks:
   edge: {}
   platform: {internal: true}
+  outbound: {}

@@ -136,3 +136,7 @@ def test_managed_compose_forces_qbittorrent_through_gluetun() -> None:
     assert "gluetun: {condition: service_healthy}" in qbit
     assert "ports:" not in qbit.split("networks:", 1)[0]
     assert "FIREWALL: \"on\"" in compose
+    assert "platform: {internal: true}" in compose
+    assert "outbound: {}" in compose
+    gluetun = compose.split("  gluetun:", 1)[1].split("  qbittorrent:", 1)[0]
+    assert "networks: [platform, outbound]" in gluetun

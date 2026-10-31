@@ -37,3 +37,9 @@ and the [GitHub migration checklist](docs/github-migration-checklist.md).
 - Jellyfin remains external in the first production migration.
 - Production cutover requires a separate approval after backup and rollback
   evidence is reviewed.
+
+The existing Jellyfin integration is preserved: configure `JELLYFIN_URL` and
+store its API key in `FOXDEN_SECRETS_DIR/jellyfin-api-key`. The Music worker
+continues to request a library refresh after a successful import. This initial
+deployment does not modify or replace the existing Jellyfin instance; managed
+Jellyfin is the next optional migration phase after the isolated stack passes.

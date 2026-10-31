@@ -83,6 +83,7 @@ jobs:
       - run: |
           python -m pip install -r apps/media/requirements-dev.txt
           python -m pip install -e 'apps/portal[test]'
+          python -m pip install PyYAML==6.0.3
       - name: Movies TV tests
         env: {PYTHONPATH: 'apps/media:apps/portal/src'}
         run: |

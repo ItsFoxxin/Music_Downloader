@@ -1,0 +1,57 @@
+# Local configuration and secrets
+.env
+.env.*
+*.env
+*.env.*
+!.env.example
+Fox-Den-Music-production.env
+secrets/
+
+# Runtime data and user-supplied media
+data/
+/browser-config/
+/config/
+/download-inbox/
+/downloads/
+/music/
+/staging/
+*.db
+*.db-*
+*.sqlite
+*.sqlite3
+*.zip
+*.flac
+*.mp3
+*.m4a
+*.aac
+*.ogg
+*.opus
+
+# Python
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+
+# Tests and tooling
+.pytest_cache/
+.pytest-*/
+.tmp/
+.pytest-cancel*/
+.mypy_cache/
+.ruff_cache/
+.coverage
+coverage.xml
+htmlcov/
+reports/
+*.log
+
+# Editors and operating systems
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+*.codex-original

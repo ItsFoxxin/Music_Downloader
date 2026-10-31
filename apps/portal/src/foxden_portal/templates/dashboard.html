@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% block title %}Portal · Fox Den Media{% endblock %}
+{% block content %}
+<section class="hero">
+  <div><p class="eyebrow">Platform overview</p><h1>Your media den</h1><p>Music, movies, and television in one place.</p></div>
+  <div class="user-chip"><span>{{ user.display_name }}</span><small>{{ user.role }}</small></div>
+</section>
+
+<section aria-labelledby="modules-title">
+  <div class="section-heading"><div><p class="eyebrow">Modules</p><h2 id="modules-title">Available services</h2></div></div>
+  {% if modules %}
+  <div class="module-grid">
+    {% for module in modules %}
+    <article class="module-card state-{{ module.state }}">
+      <div class="module-head"><h3>{{ module.name }}</h3><span class="state-badge">{{ module.state }}</span></div>
+      <p>{{ module.summary }}</p>
+      {% if module.version %}<p class="muted">Version {{ module.version }}</p>{% endif %}
+      {% if module.capabilities %}<ul class="chips" aria-label="Capabilities">{% for item in module.capabilities if item.enabled %}<li>{{ item.label }}</li>{% endfor %}</ul>{% endif %}
+      {% if module.state in ['healthy','unhealthy'] %}<a class="module-link" href="{{ module.navigation_path }}">Open {{ module.name }}</a>{% else %}<span class="module-link disabled" aria-disabled="true">Currently unavailable</span>{% endif %}
+    </article>
+    {% endfor %}
+  </div>
+  {% else %}
+  <div class="empty"><h3>No media modules are enabled</h3><p>The Portal is healthy. Enable Music or Movies/TV in the module registry when you are ready.</p></div>
+  {% endif %}
+</section>
+
+<section aria-labelledby="activity-title">
+  <p class="eyebrow">Across the platform</p><h2 id="activity-title">Recent activity</h2>
+  {% if activity %}<div class="activity-list">{% for item in activity %}<article><span class="activity-source">{{ item.module_name }}</span><div><strong>{{ item.title }}</strong><p>{{ item.kind }} · {{ item.status }}</p></div><time datetime="{{ item.occurred_at.isoformat() }}">{{ item.occurred_at.strftime('%Y-%m-%d %H:%M UTC') }}</time></article>{% endfor %}</div>
+  {% else %}<p class="muted">No recent module activity is available.</p>{% endif %}
+</section>
+{% endblock %}

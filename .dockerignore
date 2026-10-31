@@ -1,0 +1,11 @@
+.git
+.env
+.env.*
+data
+secrets
+music
+tests
+docs
+**/__pycache__
+**/.pytest_cache
+**/*.pyc

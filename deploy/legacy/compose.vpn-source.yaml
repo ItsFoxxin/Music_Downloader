@@ -1,0 +1,4 @@
+# Compatibility shim for older two-file launch commands.
+# Gluetun and qBittorrent now live in compose.yaml and start by default.
+# Use: docker compose -f compose.yaml up -d --build
+services: {}

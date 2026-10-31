@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>{% block title %}Fox Den Media{% endblock %}</title>
+  <link rel="stylesheet" href="{{ url_for('static', path='/portal.css') }}">
+</head>
+<body>
+  <a class="skip" href="#content">Skip to content</a>
+  <header class="topbar">
+    <a class="brand" href="/" aria-label="Fox Den Media home"><span aria-hidden="true">🦊</span> Fox Den Media</a>
+    {% if user %}
+    <nav aria-label="Platform">
+      <a href="/">Home</a>
+      {% if user.role == 'admin' %}<a href="/admin/users">Accounts</a>{% endif %}
+      <form action="/logout" method="post" class="inline"><input type="hidden" name="csrf" value="{{ csrf|default('') }}"><button class="link-button">Log out</button></form>
+    </nav>
+    {% endif %}
+  </header>
+  <main id="content" class="shell">{% block content %}{% endblock %}</main>
+  <footer>Portal {{ version }} · Module-aware and independently available</footer>
+</body>
+</html>

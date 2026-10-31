@@ -1,0 +1,17 @@
+name: foxden-vpn-fail-closed-fixture
+services:
+  vpn:
+    image: alpine:3.22
+    network_mode: none
+    command: [sh, -c, "touch /tmp/healthy && sleep 300"]
+    healthcheck:
+      test: [CMD, test, -f, /tmp/healthy]
+      interval: 1s
+      timeout: 1s
+      retries: 10
+  torrent-client:
+    image: alpine:3.22
+    network_mode: service:vpn
+    depends_on:
+      vpn: {condition: service_healthy}
+    command: [sh, -c, "sleep 300"]

@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <title>{% block title %}{{ app_name }}{% endblock %}</title>
+  <link rel="stylesheet" href="{{ root_path }}/static/styles.css?v={{ version }}">
+  <link rel="stylesheet" href="{{ root_path }}/static/workspace.css?v={{ version }}">
+  <script src="{{ root_path }}/static/app.js?v={{ version }}" defer></script>
+</head>
+<body class="workspace">
+  {% set path = request.url.path %}
+  {% set section = 'Dashboard' %}
+  {% if path in ['/add', '/imports'] %}{% set section = 'Add music' %}
+  {% elif path.startswith('/acquisitions') %}{% set section = 'Queue' %}
+  {% elif path.startswith('/review') %}{% set section = 'Review' %}
+  {% elif path.startswith('/library') %}{% set section = 'Library' %}
+  {% elif path.startswith('/history') %}{% set section = 'History' %}
+  {% elif path.startswith('/jobs') %}{% set section = 'Import details' %}{% endif %}
+  <a class="skip-link" href="#main-content">Skip to main content</a>
+  <aside class="sidebar">
+    <a class="brand" href="{{ root_path }}/" aria-label="Fox Den Music dashboard">
+      <span class="brand-mark" aria-hidden="true">🦊</span>
+      <span>Fox Den<small>MUSIC WORKSPACE</small></span>
+    </a>
+    <p class="nav-label">Your collection</p>
+    <nav aria-label="Main navigation">
+      {% for href, label, icon in [('/', 'Dashboard', '◫'), ('/add', 'Add music', '+'), ('/acquisitions', 'Queue', '↓'), ('/review', 'Review', '✓'), ('/library', 'Library', '♫'), ('/history', 'History', '◷')] %}
+      <a href="{{ root_path }}{{ href }}"{% if section == label %} aria-current="page"{% endif %}><span class="nav-icon" aria-hidden="true">{{ icon }}</span>{{ label }}</a>
+      {% endfor %}
+    </nav>
+    <p class="nav-label">Explore the den</p>
+    <nav class="secondary-nav" aria-label="Browse library">
+      {% for href, label, icon in [('/library/artists', 'Artists', '♧'), ('/library/albums', 'Albums', '▤'), ('/library/health', 'Library health', '◇')] %}
+      <a href="{{ root_path }}{{ href }}"{% if path == href %} aria-current="page"{% endif %}><span class="nav-icon" aria-hidden="true">{{ icon }}</span>{{ label }}</a>
+      {% endfor %}
+    </nav>
+    <div class="sidebar-note">A little care for every track.<p>Check. Tag. Bring it home.</p><small>Fox Den Music · v{{ version }}</small></div>
+  </aside>
+  <main class="page-shell" id="main-content" tabindex="-1">
+    <header class="topline"><span>THE FOX DEN <span class="slash">/</span> {{ section }}</span><span class="workspace-badge">Music workspace</span></header>
+    {% block content %}{% endblock %}
+    <footer><span>Made for your den. Built to keep your collection in order.</span><span>Fox Den Music · v{{ version }}</span></footer>
+  </main>
+</body>
+</html>

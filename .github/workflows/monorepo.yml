@@ -1,0 +1,145 @@
+name: Validate Fox Den Media monorepo
+
+on:
+  push:
+    branches: [dev, main, feature/foxden-media-monorepo]
+  pull_request:
+    branches: [dev, main]
+  merge_group:
+    types: [checks_requested]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: monorepo-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validation:
+    name: Validation and deployment modes
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with: {persist-credentials: false, fetch-depth: 0}
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with: {python-version: '3.12'}
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with: {node-version: '22'}
+      - run: python -m pip install pytest==9.1.1 PyYAML==6.0.3 cryptography==50.0.2
+      - name: Source, history, release, and platform tests
+        run: |
+          python -m compileall -q apps scripts tests
+          node --check apps/media/app/static/app.js
+          node --check apps/music/backend/src/foxden_music/static/app.js
+          python scripts/check_release.py
+          python scripts/scan_history_secrets.py
+          python -m pytest tests/platform tests/test_integration_compose.py tests/test_ingress_config.py -q
+          test -z "$(git ls-tree -r --name-only HEAD | grep '^music/' || true)"
+      - name: Render every deployment mode
+        run: |
+          docker compose --env-file deploy/examples/music.env.example -f deploy/compose.yaml --profile music config --quiet
+          docker compose --env-file deploy/examples/media.env.example -f deploy/compose.yaml --profile media config --quiet
+          docker compose --env-file deploy/examples/full-external.env.example -f deploy/compose.yaml --profile music --profile media config --quiet
+          docker compose --env-file deploy/examples/full-managed.env.example -f deploy/compose.yaml --profile music --profile media --profile managed --profile browser config --quiet
+
+  music:
+    name: Music regressions and real audio
+    needs: validation
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix: {python: ['3.12', '3.13']}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with: {python-version: '${{ matrix.python }}', cache: pip, cache-dependency-path: apps/music/backend/requirements*.txt}
+      - run: sudo apt-get update && sudo apt-get install -y ffmpeg
+      - run: |
+          python -m pip install -r apps/music/backend/requirements-dev.txt
+          python -m pip install --no-deps -e apps/music/backend
+          python -m pip check
+      - name: Full Music suite including single-recording and album completeness
+        run: python -m pytest -c apps/music/backend/pyproject.toml apps/music/backend/tests apps/music/ci/test_gates.py --cov=foxden_music --cov-fail-under=78 --junitxml=reports/music-${{ matrix.python }}.xml
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: always()
+        with: {name: 'music-${{ matrix.python }}', path: reports/, retention-days: 14}
+
+  applications:
+    name: Portal and Movies TV
+    needs: validation
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with: {python-version: '3.12', cache: pip, cache-dependency-path: 'apps/*/*requirements*.txt'}
+      - run: sudo apt-get update && sudo apt-get install -y ffmpeg
+      - run: |
+          python -m pip install -r apps/media/requirements-dev.txt
+          python -m pip install -e 'apps/portal[test]'
+      - name: Movies TV tests
+        env: {PYTHONPATH: 'apps/media:apps/portal/src'}
+        run: |
+          python -m pytest apps/media/tests -q --junitxml=reports/media-app.xml
+          python -m pytest tests -q --ignore=tests/platform --junitxml=reports/media-platform.xml
+      - name: Portal tests
+        env: {PYTHONPATH: 'apps/media:apps/portal/src'}
+        run: python -m pytest -c apps/portal/pyproject.toml apps/portal/tests -q --junitxml=reports/portal.xml
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: always()
+        with: {name: portal-media, path: reports/, retention-days: 14}
+
+  audit:
+    name: Dependency vulnerability audits
+    needs: validation
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with: {python-version: '3.12'}
+      - run: python -m pip install pip-audit==2.9.0
+      - run: |
+          mkdir -p reports
+          python -m pip_audit -r apps/music/backend/requirements.txt --format json --output reports/music-audit.json
+          python -m pip_audit -r apps/media/requirements.txt --format json --output reports/media-audit.json
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: always()
+        with: {name: dependency-audits, path: reports/, retention-days: 14}
+
+  containers:
+    name: Consolidated container integration
+    needs: [music, applications, audit]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with: {persist-credentials: false, fetch-depth: 0}
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with: {python-version: '3.12'}
+      - run: python scripts/integration_stack.py up
+      - run: python scripts/smoke_integration_stack.py
+      - name: Synthetic VPN fail-closed fixture
+        run: python scripts/test_vpn_fixture.py
+      - name: Cleanup
+        if: always()
+        run: |
+          python scripts/integration_stack.py down || true
+          docker compose -f tests/fixtures/vpn/compose.yaml down --volumes --remove-orphans || true
+
+  gate:
+    name: Monorepo strict gate
+    if: always()
+    needs: [validation, music, applications, audit, containers]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 2
+    steps:
+      - env: {RESULTS: '${{ toJSON(needs) }}'}
+        run: python -c 'import json,os; r=json.loads(os.environ["RESULTS"]); assert all(v["result"]=="success" for v in r.values()), r'

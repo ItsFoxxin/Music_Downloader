@@ -15,10 +15,10 @@ def main():
     root = Path(__file__).resolve().parent.parent
     version = (root / "VERSION").read_text().strip()
     assert re.fullmatch(r"(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)", version), "VERSION must be MAJOR.MINOR.PATCH"
-    assert f"fox-den-media:{version}" in (root / "compose.yaml").read_text(), "Compose image version differs"
+    assert f"fox-den-media:{version}" in (root / "deploy" / "compose.yaml").read_text(), "Compose image version differs"
     assert f"**{version}**" in (root / "README.md").read_text(encoding="utf-8"), "README version differs"
     assert re.search(rf"^## {re.escape(version)} - \d{{4}}-\d{{2}}-\d{{2}}$", (root / "CHANGELOG.md").read_text(), re.M), "Missing dated changelog entry"
-    assert "COPY VERSION ./VERSION" in (root / "Dockerfile").read_text(), "Media image must contain VERSION"
+    assert "COPY apps/media/VERSION ./VERSION" in (root / "apps" / "media" / "Dockerfile").read_text(), "Media image must contain VERSION"
     if args.base and set(args.base) != {"0"}:
         # Verify the commit exists; only a missing VERSION file is treated as 0.0.0.
         subprocess.run(["git", "cat-file", "-e", args.base + "^{commit}"], cwd=root, check=True)

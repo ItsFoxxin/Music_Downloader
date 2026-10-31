@@ -53,7 +53,7 @@ def main() -> None:
     ingress_secret_file.write_text(ingress_secret, encoding="utf-8")
     rendered_ingress = key_dir / "portal-ingress.conf"
     rendered_ingress.write_text(
-        (ROOT / "gateway" / "portal-ingress.conf").read_text(encoding="utf-8").replace(
+        (ROOT / "infra" / "gateway" / "portal-ingress.conf").read_text(encoding="utf-8").replace(
             "__PORTAL_INGRESS_AUTH_SECRET__", ingress_secret
         ),
         encoding="utf-8",
@@ -63,7 +63,7 @@ def main() -> None:
         port = sock.getsockname()[1]
     base = f"http://127.0.0.1:{port}"
     try:
-        run("docker", "build", "-t", PORTAL_IMAGE, str(ROOT / "portal"))
+        run("docker", "build", "-t", PORTAL_IMAGE, str(ROOT / "apps" / "portal"))
         run("docker", "run", "--rm", "--user", "0", "-v", f"{key_dir.resolve()}:/keys",
             PORTAL_IMAGE, "foxden-identity-keygen", "--private", "/keys/private.pem",
             "--public", "/keys/public.json", "--kid", "smoke-1")

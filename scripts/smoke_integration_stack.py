@@ -13,8 +13,8 @@ import urllib.request
 
 
 ROOT = Path(__file__).resolve().parent.parent
-RUNTIME = ROOT / "integration" / ".runtime"
-COMPOSE = ROOT / "integration" / "compose.yaml"
+RUNTIME = ROOT / "deploy" / "integration" / ".runtime"
+COMPOSE = ROOT / "deploy" / "integration" / "compose.yaml"
 
 
 class NoRedirect(urllib.request.HTTPRedirectHandler):

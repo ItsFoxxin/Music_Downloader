@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.5.0 - 2026-10-30
+
+### Added
+
+- Canonical modular monorepo preserving Music lineage and filtered Media history.
+- Validated Music, Movies/TV, full-external, and full-managed deployment modes.
+- Environment preflight, secret initialization, dry-run deployment control, and
+  non-destructive migration inventory/backup/restore rehearsal tooling.
+- Managed qBittorrent/Gluetun topology with qBittorrent sharing only Gluetun's
+  network namespace and no independent published ports.
+
+### Security
+
+- Upgraded Pillow to 13.0.0 after the strict release audit identified 37
+  advisories in 12.3.0; no vulnerability suppression was added.
+
 ## 0.4.1 - 2026-10-27
 
 ### Added

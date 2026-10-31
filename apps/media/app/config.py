@@ -4,6 +4,22 @@ from urllib.parse import urlsplit
 import os
 
 
+def _secret(name: str) -> str:
+    """Resolve a secret from NAME or NAME_FILE without exposing its value."""
+    direct = os.getenv(name, "")
+    file_name = os.getenv(f"{name}_FILE", "")
+    if direct and file_name:
+        raise ValueError(f"Set either {name} or {name}_FILE, not both.")
+    if direct:
+        return direct
+    if not file_name:
+        return ""
+    try:
+        return Path(file_name).read_text(encoding="utf-8").strip()
+    except OSError as exc:
+        raise ValueError(f"{name}_FILE is not readable.") from exc
+
+
 @dataclass
 class Settings:
     config: Path = field(default_factory=lambda: Path(os.getenv("CONFIG_DIR", "data/config")).absolute())
@@ -12,11 +28,11 @@ class Settings:
     qbit_url: str = field(default_factory=lambda: os.getenv("QBIT_URL", "").rstrip("/"))
     qbit_public_url: str = field(default_factory=lambda: os.getenv("QBIT_PUBLIC_URL", ""))
     qbit_user: str = field(default_factory=lambda: os.getenv("QBIT_USERNAME", "admin"))
-    qbit_password: str = field(default_factory=lambda: os.getenv("QBIT_PASSWORD", ""))
+    qbit_password: str = field(default_factory=lambda: _secret("QBIT_PASSWORD"))
     qbit_download_root: str = field(default_factory=lambda: os.getenv("QBIT_DOWNLOAD_ROOT", "/downloads"))
     media_browser_home_url: str = field(default_factory=lambda: os.getenv(
         "MEDIA_BROWSER_HOME_URL", "https://www.themoviedb.org/"))
-    token: str = field(default_factory=lambda: os.getenv("APP_TOKEN", ""))
+    token: str = field(default_factory=lambda: _secret("APP_TOKEN"))
     ffprobe: str = field(default_factory=lambda: os.getenv("FFPROBE_PATH", "ffprobe"))
     ffmpeg: str = field(default_factory=lambda: os.getenv("FFMPEG_PATH", "ffmpeg"))
     full_decode: bool = field(default_factory=lambda: os.getenv("FULL_DECODE", "true").lower() == "true")

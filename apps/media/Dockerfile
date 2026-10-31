@@ -7,11 +7,11 @@ RUN test "$APP_UID" -gt 0 && test "$APP_GID" -gt 0 \
     && rm -rf /var/lib/apt/lists/* \
     && groupadd -g "$APP_GID" foxden && useradd -u "$APP_UID" -g "$APP_GID" -M foxden
 WORKDIR /app
-COPY requirements.txt ./
+COPY apps/media/requirements.txt ./
 RUN pip install --no-cache-dir -r requirements.txt
-COPY app/ ./app/
-COPY portal/src/foxden_identity/ ./foxden_identity/
-COPY VERSION ./VERSION
+COPY apps/media/app/ ./app/
+COPY apps/portal/src/foxden_identity/ ./foxden_identity/
+COPY apps/media/VERSION ./VERSION
 USER foxden:foxden
 EXPOSE 8010
 CMD ["uvicorn", "app.main:create_app", "--factory", "--host", "0.0.0.0", "--port", "8010", "--workers", "1", "--no-proxy-headers"]

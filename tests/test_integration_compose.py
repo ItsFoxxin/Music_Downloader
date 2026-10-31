@@ -5,7 +5,7 @@ import yaml
 
 
 ROOT = Path(__file__).parents[1]
-COMPOSE_PATH = ROOT / "integration" / "compose.yaml"
+COMPOSE_PATH = ROOT / "deploy" / "integration" / "compose.yaml"
 COMPOSE_TEXT = COMPOSE_PATH.read_text(encoding="utf-8")
 COMPOSE = yaml.safe_load(COMPOSE_TEXT)
 
@@ -44,10 +44,10 @@ def test_application_containers_are_non_root_read_only_and_identity_is_asymmetri
 
 
 def test_generated_runtime_state_is_ignored_and_production_compose_is_not_overridden():
-    assert "integration/.runtime/" in (ROOT / ".gitignore").read_text(encoding="utf-8")
+    assert "deploy/integration/.runtime/" in (ROOT / ".gitignore").read_text(encoding="utf-8")
     assert COMPOSE_PATH.name == "compose.yaml"
     assert COMPOSE_PATH.parent.name == "integration"
-    assert "integration/compose.yaml" not in (ROOT / "compose.yaml").read_text(encoding="utf-8")
+    assert "deploy/integration/compose.yaml" not in (ROOT / "deploy" / "compose.yaml").read_text(encoding="utf-8")
 
 
 def test_local_runner_requires_exact_approved_music_revision(monkeypatch, tmp_path):

@@ -1,7 +1,7 @@
 from pathlib import Path
 
 
-CONFIG = (Path(__file__).parents[1] / "gateway" / "portal-ingress.conf").read_text(encoding="utf-8")
+CONFIG = (Path(__file__).parents[1] / "infra" / "gateway" / "portal-ingress.conf").read_text(encoding="utf-8")
 
 
 def test_portal_is_root_and_auth_authority():

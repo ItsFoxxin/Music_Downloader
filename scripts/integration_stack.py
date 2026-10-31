@@ -11,8 +11,8 @@ import sys
 
 
 ROOT = Path(__file__).resolve().parent.parent
-RUNTIME = ROOT / "integration" / ".runtime"
-COMPOSE = ROOT / "integration" / "compose.yaml"
+RUNTIME = ROOT / "deploy" / "integration" / ".runtime"
+COMPOSE = ROOT / "deploy" / "integration" / "compose.yaml"
 APPROVED_MUSIC_COMMIT = "85904c45a79421cd4a1e00378c231bb08c1a03fc"
 
 
@@ -24,8 +24,14 @@ def run(*args: str, cwd: Path = ROOT, capture: bool = False) -> str:
 
 def verify_music(source: Path, approved_commit: str = APPROVED_MUSIC_COMMIT) -> None:
     source = source.resolve()
+    bundled = (ROOT / "apps" / "music").resolve()
+    if source == bundled:
+        result = subprocess.run(["git", "merge-base", "--is-ancestor", approved_commit, "HEAD"], cwd=ROOT)
+        if result.returncode != 0:
+            raise SystemExit(f"Consolidated repository does not contain approved Music revision {approved_commit}.")
+        return
     if not (source / ".git").exists():
-        raise SystemExit("Music source must be a dedicated Git checkout or worktree.")
+        raise SystemExit("Music source must be apps/music or a dedicated Git checkout/worktree.")
     head = run("git", "rev-parse", "HEAD", cwd=source, capture=True)
     if head != approved_commit:
         raise SystemExit(
@@ -46,13 +52,13 @@ def prepare(source: Path, port: int, music_commit: str = APPROVED_MUSIC_COMMIT) 
         if child.is_file():
             child.unlink()
     portal_image = "foxden-portal:0.4.1-integration"
-    run("docker", "build", "-t", portal_image, str(ROOT / "portal"))
+    run("docker", "build", "-t", portal_image, str(ROOT / "apps" / "portal"))
     run("docker", "run", "--rm", "--user", "0", "-v", f"{RUNTIME.resolve()}:/keys",
         portal_image, "foxden-identity-keygen", "--private", "/keys/private.pem",
         "--public", "/keys/public.json", "--kid", "integration-1")
     ingress_secret = secrets.token_urlsafe(48)
     (RUNTIME / "ingress-auth").write_text(ingress_secret, encoding="utf-8")
-    template = (ROOT / "gateway" / "portal-ingress.conf").read_text(encoding="utf-8")
+    template = (ROOT / "infra" / "gateway" / "portal-ingress.conf").read_text(encoding="utf-8")
     (RUNTIME / "portal-ingress.conf").write_text(
         template.replace("__PORTAL_INGRESS_AUTH_SECRET__", ingress_secret), encoding="utf-8")
     run("docker", "run", "--rm", "--user", "0", "-v", f"{RUNTIME.resolve()}:/keys",
@@ -82,15 +88,13 @@ def compose(env: Path, *args: str) -> None:
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("action", choices=("up", "down", "config"))
-    parser.add_argument("--music-source", type=Path)
+    parser.add_argument("--music-source", type=Path, default=ROOT / "apps" / "music")
     parser.add_argument("--music-commit", default=APPROVED_MUSIC_COMMIT,
                         help="exact approved Music revision required by the disposable stack")
     parser.add_argument("--port", type=int, default=18080)
     options = parser.parse_args()
     env = RUNTIME / "integration.env"
     if options.action == "up":
-        if not options.music_source:
-            parser.error("up requires --music-source pointing to the isolated authoritative Music checkout")
         env = prepare(options.music_source, options.port, options.music_commit)
         compose(env, "up", "--build", "-d", "--wait")
     elif options.action == "config":

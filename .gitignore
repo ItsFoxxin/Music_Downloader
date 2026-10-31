@@ -2,8 +2,8 @@
 .env.*
 !.env.example
 data/
-secrets/*
-!secrets/README.md
+deploy/secrets/*
+!deploy/secrets/README.md
 *.db
 *.db-*
 *.sqlite*
@@ -17,4 +17,8 @@ __pycache__/
 htmlcov/
 work/
 *.zip
-integration/.runtime/
+deploy/integration/.runtime/
+deploy/.runtime/
+reports/
+**/build/
+dist/

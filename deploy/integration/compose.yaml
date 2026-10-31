@@ -59,7 +59,7 @@ services:
       - media-library:/media-library
 
   ingress:
-    image: nginx:stable-alpine
+    image: nginx:1.28.0-alpine
     user: "101:101"
     read_only: true
     cap_drop: [ALL]
@@ -76,7 +76,7 @@ services:
 
   portal:
     image: foxden-portal:0.4.1-integration
-    build: ../portal
+    build: ../../apps/portal
     user: "10001:10001"
     read_only: true
     cap_drop: [ALL]
@@ -130,7 +130,9 @@ services:
 
   media:
     image: foxden-media:0.4.1-integration
-    build: ..
+    build:
+      context: ../..
+      dockerfile: apps/media/Dockerfile
     user: "10001:10001"
     read_only: true
     init: true

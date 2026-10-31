@@ -3,7 +3,7 @@ from __future__ import annotations
 from functools import lru_cache
 from pathlib import Path
 
-from pydantic import Field, field_validator
+from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -48,6 +48,7 @@ class Settings(BaseSettings):
     web_root_path: str = ""
     log_level: str = "INFO"
     csrf_secret: str | None = None
+    csrf_secret_file: Path | None = None
     foxden_identity_public_keys_file: Path | None = None
     foxden_identity_issuer: str = "foxden-portal"
     foxden_identity_audience: str = "music"
@@ -82,6 +83,7 @@ class Settings(BaseSettings):
 
     jellyfin_url: str | None = None
     jellyfin_api_key: str | None = None
+    jellyfin_api_key_file: Path | None = None
     jellyfin_timeout_seconds: float = 15.0
 
     spotidownloader_url: str = "https://spotidownloader.com/"
@@ -108,6 +110,8 @@ class Settings(BaseSettings):
         "acoustid_api_key",
         "foxden_identity_public_keys_file",
         "foxden_public_origin",
+        "csrf_secret_file",
+        "jellyfin_api_key_file",
         mode="before",
     )
     @classmethod
@@ -115,6 +119,26 @@ class Settings(BaseSettings):
         if isinstance(value, str) and not value.strip():
             return None
         return value
+
+    @model_validator(mode="after")
+    def resolve_secret_files(self) -> "Settings":
+        for value_name, file_name, environment_name, required in (
+            ("csrf_secret", "csrf_secret_file", "CSRF_SECRET", True),
+            ("jellyfin_api_key", "jellyfin_api_key_file", "JELLYFIN_API_KEY", False),
+        ):
+            value = getattr(self, value_name)
+            path = getattr(self, file_name)
+            if value and path:
+                raise ValueError(f"Set either {environment_name} or {environment_name}_FILE, not both")
+            if path:
+                try:
+                    secret = path.read_text(encoding="utf-8").strip()
+                except OSError as exc:
+                    raise ValueError(f"{environment_name}_FILE is not readable") from exc
+                if not secret and required:
+                    raise ValueError(f"{environment_name}_FILE is empty")
+                setattr(self, value_name, secret or None)
+        return self
 
     @field_validator("foxden_public_origin")
     @classmethod

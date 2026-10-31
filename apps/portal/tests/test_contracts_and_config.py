@@ -12,14 +12,14 @@ from conftest import bootstrap_admin, settings
 
 
 def test_checked_in_module_schema_matches_runtime_contract():
-    schema_path = Path(__file__).parents[2] / "contracts" / "v1" / "module-summary.schema.json"
+    schema_path = Path(__file__).parents[3] / "contracts" / "v1" / "module-summary.schema.json"
     checked_in = json.loads(schema_path.read_text(encoding="utf-8"))
     runtime = ModuleSummary.model_json_schema()
     assert checked_in["properties"]["contract_version"]["const"] == CONTRACT_VERSION
     assert set(checked_in["required"]) == set(runtime["required"])
     assert checked_in["properties"]["capabilities"]["maxItems"] == 50
     assert checked_in["properties"]["activity"]["maxItems"] == 20
-    activity_path = Path(__file__).parents[2] / "contracts" / "v1" / "activity.schema.json"
+    activity_path = Path(__file__).parents[3] / "contracts" / "v1" / "activity.schema.json"
     activity = json.loads(activity_path.read_text(encoding="utf-8"))
     assert set(activity["required"]) == set(ActivityFeed.model_json_schema()["required"])
     assert activity["properties"]["activity"]["maxItems"] == 20

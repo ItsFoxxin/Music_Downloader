@@ -95,17 +95,25 @@ def _paths(values: dict[str, str], keys: tuple[str, ...], *, create: bool = Fals
             path.mkdir(parents=True, exist_ok=True)
         if not path.is_dir():
             raise ConfigError(f"{key} is not an existing directory: {path}")
+        required_access = os.R_OK | os.X_OK
+        if key != "TORRENT_DATA_PATH":
+            required_access |= os.W_OK
+        if not os.access(path, required_access):
+            expectation = "readable" if key == "TORRENT_DATA_PATH" else "readable and writable"
+            raise ConfigError(f"{key} must be {expectation} by the deployment UID/GID: {path}")
         resolved.append(path.resolve())
     if len(set(resolved)) != len(resolved):
         raise ConfigError("Configured storage roles must use distinct directories.")
     return resolved
 
 
-def _secret(path: Path, *, allow_empty: bool = False) -> None:
+def _secret(path: Path, *, allow_empty: bool = False, private: bool = True) -> None:
     if not path.is_file():
         raise ConfigError(f"Required secret file is missing: {path.name}")
     if not allow_empty and not path.read_bytes().strip():
         raise ConfigError(f"Required secret file is empty: {path.name}")
+    if private and os.name != "nt" and path.stat().st_mode & 0o077:
+        raise ConfigError(f"Secret file permissions are too broad; require mode 0600: {path.name}")
 
 
 def validate(mode: str, values: dict[str, str], *, browser: bool = False, create_paths: bool = False) -> None:
@@ -134,12 +142,14 @@ def validate(mode: str, values: dict[str, str], *, browser: bool = False, create
         all_paths += _paths(values, ("BROWSER_CONFIG_PATH",), create=create_paths)
         if "music" not in definition["modules"]:
             raise ConfigError("The contained browser currently requires a Music deployment mode.")
-    if len(set(all_paths)) != len(all_paths):
-        raise ConfigError("A host path is assigned to more than one storage role.")
+    for index, first in enumerate(all_paths):
+        for second in all_paths[index + 1:]:
+            if first == second or first in second.parents or second in first.parents:
+                raise ConfigError("Host storage roles must be distinct, non-overlapping directories.")
 
     secret_dir = Path(values["FOXDEN_SECRETS_DIR"]).resolve()
     for name in SECRET_FILES:
-        _secret(secret_dir / name)
+        _secret(secret_dir / name, private=name != "identity-public.json")
     if "music" in definition["modules"]:
         for name in MUSIC_SECRET_FILES:
             _secret(secret_dir / name)

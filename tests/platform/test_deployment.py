@@ -47,7 +47,9 @@ def configured(tmp_path: Path, mode: str) -> dict[str, str]:
         "wireguard-private-key",
         "oidc-client-secret",
     ):
-        (secret_dir / name).write_text("x" * 40, encoding="utf-8")
+        target = secret_dir / name
+        target.write_text("x" * 40, encoding="utf-8")
+        target.chmod(0o644 if name == "identity-public.json" else 0o600)
     return values
 
 
@@ -97,6 +99,15 @@ def test_invalid_resource_limits_are_rejected(tmp_path: Path) -> None:
     values = configured(tmp_path, "music")
     values["FOXDEN_APP_MEMORY_LIMIT"] = "unlimited"
     with pytest.raises(foxden.ConfigError, match="memory"):
+        foxden.validate("music", values)
+
+
+def test_overlapping_storage_roles_are_rejected(tmp_path: Path) -> None:
+    values = configured(tmp_path, "music")
+    nested = Path(values["MUSIC_CONFIG_PATH"]) / "staging"
+    nested.mkdir()
+    values["MUSIC_STAGING_PATH"] = str(nested)
+    with pytest.raises(foxden.ConfigError, match="non-overlapping"):
         foxden.validate("music", values)
 
 
